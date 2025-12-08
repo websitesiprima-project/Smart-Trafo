@@ -1,0 +1,15 @@
+# Abaikan folder berat React
+node_modules/
+dist/
+build/
+
+# Abaikan file cache Python
+__pycache__/
+*.py[cod]
+
+# Abaikan Database (Opsional, tapi sebaiknya database jangan diupload kalau isinya rahasia)
+# pln_database.db 
+
+# Abaikan file sistem
+.DS_Store
+Thumbs.db
