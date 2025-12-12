@@ -10,8 +10,10 @@ import {
   RefreshCcw,
 } from "lucide-react";
 
-// Import tombol tema (Path Relatif yang Benar)
+// --- IMPORTS KOMPONEN (GUNAKAN PATH RELATIF) ---
 import ThemeToggle from "C:/Users/Jerem/OneDrive/Documents/Project PLN/frontend-pln/components/Themetoggle.jsx";
+import DownloadButton from "C:/Users/Jerem/OneDrive/Documents/Project PLN/frontend-pln/components/DownloadButton.jsx";
+import DuvalPentagon from "C:/Users/Jerem/OneDrive/Documents/Project PLN/frontend-pln/components/DuvalPentagon.jsx";
 
 function App() {
   // --- STATE ---
@@ -29,7 +31,7 @@ function App() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // --- FUNGSI ---
+  // --- FUNGSI LOGIKA ---
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   const handleChange = (e) => {
@@ -39,9 +41,10 @@ function App() {
     });
   };
 
+  // 1. Kirim Data ke Backend (AI)
   const handleSubmit = async () => {
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 800)); // Simulasi delay biar smooth
     try {
       const response = await fetch("http://127.0.0.1:8000/predict", {
         method: "POST",
@@ -50,6 +53,7 @@ function App() {
       });
       const data = await response.json();
       setResult(data);
+      // Jika sedang di tab history, refresh datanya
       if (activePage === "history") fetchHistory();
     } catch (error) {
       alert(
@@ -59,6 +63,7 @@ function App() {
     setLoading(false);
   };
 
+  // 2. Ambil Data Riwayat
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -71,6 +76,33 @@ function App() {
     setLoadingHistory(false);
   };
 
+  // 3. Download Excel (CSV)
+  const downloadCSV = () => {
+    if (historyData.length === 0) {
+      alert("Belum ada data untuk diunduh!");
+      return;
+    }
+    const headers = ["Waktu,H2,CH4,C2H2,C2H4,C2H6,Status_AI,Diagnosa_IEEE"];
+    const rows = historyData.map(
+      (row) =>
+        `${row.tanggal || row[1]},${row.h2 || row[2]},${row.ch4 || row[3]},${
+          row.c2h2 || row[4]
+        },${row.c2h4 || row[5]},${row.c2h6 || row[6]},"${
+          row.hasil_ai || row[7]
+        }","${row.diagnosa || row[9]}"`
+    );
+    const csvContent =
+      "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "laporan_dga_trafo.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Auto-refresh history saat tab dibuka
   useEffect(() => {
     if (activePage === "history") fetchHistory();
   }, [activePage]);
@@ -97,7 +129,7 @@ function App() {
           : "bg-slate-50 text-slate-800"
       }`}
     >
-      {/* === SIDEBAR KIRI === */}
+      {/* === 1. SIDEBAR KIRI === */}
       <aside
         className={`w-72 fixed h-full border-r p-5 flex flex-col z-20 shadow-2xl transition-colors duration-500 ${
           isDarkMode
@@ -105,15 +137,17 @@ function App() {
             : "bg-white/90 border-slate-200"
         } backdrop-blur-xl`}
       >
-        {/* Logo */}
+        {/* Header Logo PLN */}
         <div
           className={`flex items-center gap-3 mb-8 pb-6 border-b transition-colors ${
             isDarkMode ? "border-slate-700/50" : "border-slate-200"
           }`}
         >
-          <div className="w-10 h-10 bg-yellow-400 rounded-lg flex items-center justify-center shadow-lg">
-            <Zap className="text-black fill-black" size={24} />
-          </div>
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/2/20/Logo_PLN.svg"
+            alt="Logo PLN"
+            className="w-10 h-14 object-contain"
+          />
           <div>
             <h1
               className={`text-lg font-bold tracking-tight ${
@@ -190,6 +224,10 @@ function App() {
                     value={formData[key] || ""}
                     onChange={handleChange}
                     placeholder="0"
+                    min="0"
+                    onKeyDown={(e) => {
+                      if (e.key === "-" || e.key === "e") e.preventDefault();
+                    }}
                     className={`w-full border text-sm rounded-lg p-2.5 pl-3 focus:ring-1 focus:ring-blue-500 outline-none transition-all 
                         ${
                           isDarkMode
@@ -219,9 +257,9 @@ function App() {
         )}
       </aside>
 
-      {/* === KONTEN KANAN === */}
+      {/* === 2. KONTEN UTAMA (KANAN) === */}
       <main className="flex-1 ml-72 p-8 lg:p-12 transition-all">
-        {/* --- HALAMAN DASHBOARD --- */}
+        {/* --- A. HALAMAN DASHBOARD --- */}
         {activePage === "dashboard" && (
           <div className="animate-in fade-in duration-500">
             <header className="mb-8">
@@ -235,106 +273,133 @@ function App() {
             </header>
 
             {result ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Card Hasil AI */}
-                <div
-                  className={`p-6 rounded-2xl border shadow-xl ${
-                    isDarkMode
-                      ? "bg-[#1e293b] border-slate-700"
-                      : "bg-white border-slate-200"
-                  }`}
-                >
-                  <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">
-                    Prediksi AI
-                  </h3>
-                  <p
-                    className={`text-3xl font-bold ${
-                      getStatusColor(result.ai_status).split(" ")[0]
+              <div className="space-y-6">
+                {/* Baris 1: Card Hasil */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Card AI */}
+                  <div
+                    className={`p-6 rounded-2xl border shadow-xl ${
+                      isDarkMode
+                        ? "bg-[#1e293b] border-slate-700"
+                        : "bg-white border-slate-200"
                     }`}
                   >
-                    {result.ai_status}
-                  </p>
+                    <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">
+                      Prediksi AI
+                    </h3>
+                    <p
+                      className={`text-3xl font-bold ${
+                        getStatusColor(result.ai_status).split(" ")[0]
+                      }`}
+                    >
+                      {result.ai_status}
+                    </p>
+                  </div>
+
+                  {/* Card IEEE */}
+                  <div
+                    className={`p-6 rounded-2xl border shadow-xl ${
+                      isDarkMode
+                        ? "bg-[#1e293b] border-slate-700"
+                        : "bg-white border-slate-200"
+                    }`}
+                  >
+                    <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">
+                      Standar IEEE
+                    </h3>
+                    <p className="text-3xl font-bold text-yellow-500">
+                      {result.ieee_status}
+                    </p>
+                    <p className="text-sm mt-2 opacity-70">
+                      Diagnosa: <b>{result.diagnosis}</b>
+                    </p>
+                  </div>
                 </div>
 
-                {/* Card Hasil IEEE */}
-                <div
-                  className={`p-6 rounded-2xl border shadow-xl ${
-                    isDarkMode
-                      ? "bg-[#1e293b] border-slate-700"
-                      : "bg-white border-slate-200"
-                  }`}
-                >
-                  <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">
-                    Standar IEEE
-                  </h3>
-                  <p className="text-3xl font-bold text-yellow-500">
-                    {result.ieee_status}
-                  </p>
-                  <p className="text-sm mt-2 opacity-70">
-                    Diagnosa: <b>{result.diagnosis}</b>
-                  </p>
-                </div>
-
-                {/* Grafik Visualisasi */}
-                <div
-                  className={`col-span-1 md:col-span-2 p-6 rounded-2xl border shadow-lg ${
-                    isDarkMode
-                      ? "bg-[#1e293b] border-slate-700"
-                      : "bg-white border-slate-200"
-                  }`}
-                >
-                  <h3 className="font-bold mb-4 flex items-center gap-2">
-                    <BarChart3 size={18} className="text-blue-500" />{" "}
-                    Visualisasi Gas
-                  </h3>
-                  <div className="h-64 flex items-end gap-3 px-4 pb-0 border-b border-slate-500/30 relative">
-                    {/* Grid Latar Belakang */}
-                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-10">
-                      <div className="border-t border-slate-500 w-full"></div>
-                      <div className="border-t border-slate-500 w-full"></div>
-                      <div className="border-t border-slate-500 w-full"></div>
-                      <div className="border-t border-slate-500 w-full"></div>
+                {/* Baris 2: Visualisasi (Grafik + Pentagon) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Grafik Batang */}
+                  <div
+                    className={`col-span-1 lg:col-span-2 p-6 rounded-2xl border shadow-lg ${
+                      isDarkMode
+                        ? "bg-[#1e293b] border-slate-700"
+                        : "bg-white border-slate-200"
+                    }`}
+                  >
+                    <h3 className="font-bold mb-4 flex items-center gap-2">
+                      <BarChart3 size={18} className="text-blue-500" />{" "}
+                      Visualisasi Gas
+                    </h3>
+                    <div className="h-64 flex items-end gap-3 px-4 pb-0 border-b border-slate-500/30 relative">
+                      {/* Grid Background */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-10">
+                        <div className="border-t border-slate-500 w-full"></div>
+                        <div className="border-t border-slate-500 w-full"></div>
+                        <div className="border-t border-slate-500 w-full"></div>
+                        <div className="border-t border-slate-500 w-full"></div>
+                      </div>
+                      {["h2", "ch4", "c2h2", "c2h4", "c2h6"].map((key, i) => {
+                        const rawHeight = (formData[key] / 500) * 100;
+                        const heightPercent =
+                          rawHeight > 100 ? 100 : rawHeight < 2 ? 2 : rawHeight;
+                        return (
+                          <div
+                            key={key}
+                            className="flex-1 flex flex-col items-center group h-full justify-end z-10"
+                          >
+                            <div
+                              className={`mb-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold px-2 py-1 rounded shadow-lg -translate-y-2 ${
+                                isDarkMode
+                                  ? "bg-slate-700 text-white"
+                                  : "bg-slate-800 text-white"
+                              }`}
+                            >
+                              {formData[key]} ppm
+                            </div>
+                            <div
+                              className="w-full max-w-[60px] rounded-t-lg transition-all duration-1000 opacity-90 group-hover:opacity-100 relative shadow-lg"
+                              style={{
+                                height: `${heightPercent}%`,
+                                backgroundColor: chartColors[i],
+                              }}
+                            >
+                              <div className="absolute top-0 w-full h-1 bg-white/30 rounded-t-lg"></div>
+                            </div>
+                            <span className="text-xs mt-3 uppercase font-bold opacity-60">
+                              {key}
+                            </span>
+                            <span
+                              className={`text-xs font-bold ${
+                                isDarkMode ? "text-white" : "text-slate-900"
+                              }`}
+                            >
+                              {formData[key]}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {["h2", "ch4", "c2h2", "c2h4", "c2h6"].map((key, i) => {
-                      const rawHeight = (formData[key] / 500) * 100;
-                      const heightPercent =
-                        rawHeight > 100 ? 100 : rawHeight < 2 ? 2 : rawHeight;
-                      return (
-                        <div
-                          key={key}
-                          className="flex-1 flex flex-col items-center group h-full justify-end z-10"
-                        >
-                          <div
-                            className={`mb-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold px-2 py-1 rounded shadow-lg -translate-y-2 ${
-                              isDarkMode
-                                ? "bg-slate-700 text-white"
-                                : "bg-slate-800 text-white"
-                            }`}
-                          >
-                            {formData[key]} ppm
-                          </div>
-                          <div
-                            className="w-full max-w-[60px] rounded-t-lg transition-all duration-1000 opacity-90 group-hover:opacity-100 relative shadow-lg"
-                            style={{
-                              height: `${heightPercent}%`,
-                              backgroundColor: chartColors[i],
-                            }}
-                          >
-                            <div className="absolute top-0 w-full h-1 bg-white/30 rounded-t-lg"></div>
-                          </div>
-                          <span className="text-xs mt-3 uppercase font-bold opacity-60">
-                            {key}
-                          </span>
-                          <span
-                            className={`text-xs font-bold ${
-                              isDarkMode ? "text-white" : "text-slate-900"
-                            }`}
-                          >
-                            {formData[key]}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  </div>
+
+                  {/* Duval Pentagon */}
+                  <div
+                    className={`col-span-1 p-6 rounded-2xl border shadow-lg flex flex-col items-center justify-center ${
+                      isDarkMode
+                        ? "bg-[#1e293b] border-slate-700"
+                        : "bg-white border-slate-200"
+                    }`}
+                  >
+                    <h3 className="font-bold mb-4 flex items-center gap-2 self-start">
+                      <Activity size={18} className="text-purple-500" />{" "}
+                      Diagnosis Duval
+                    </h3>
+                    <DuvalPentagon
+                      h2={formData.h2}
+                      ch4={formData.ch4}
+                      c2h6={formData.c2h6}
+                      c2h4={formData.c2h4}
+                      c2h2={formData.c2h2}
+                    />
                   </div>
                 </div>
               </div>
@@ -347,7 +412,7 @@ function App() {
           </div>
         )}
 
-        {/* --- HALAMAN RIWAYAT --- */}
+        {/* --- B. HALAMAN RIWAYAT --- */}
         {activePage === "history" && (
           <div className="animate-in slide-in-from-bottom-8 duration-500">
             <header className="mb-8 flex justify-between items-center">
@@ -363,16 +428,20 @@ function App() {
                   Data historis pengujian yang tersimpan di Database SQLite.
                 </p>
               </div>
-              <button
-                onClick={fetchHistory}
-                className="p-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors"
-              >
-                <RefreshCcw
-                  className={loadingHistory ? "animate-spin" : ""}
-                  size={20}
-                />
-              </button>
+              <div className="flex items-center gap-4">
+                <DownloadButton onClick={downloadCSV} />
+                <button
+                  onClick={fetchHistory}
+                  className="p-3 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 transition-colors shadow-lg"
+                >
+                  <RefreshCcw
+                    className={loadingHistory ? "animate-spin" : ""}
+                    size={20}
+                  />
+                </button>
+              </div>
             </header>
+
             <div
               className={`rounded-xl border overflow-hidden ${
                 isDarkMode
@@ -454,7 +523,7 @@ function App() {
           </div>
         )}
 
-        {/* --- HALAMAN PANDUAN (YANG DULUNYA HILANG) --- */}
+        {/* --- C. HALAMAN PANDUAN --- */}
         {activePage === "guide" && (
           <div className="animate-in slide-in-from-right-8 duration-500 max-w-4xl">
             <header className="mb-8 border-b border-slate-700 pb-6">
@@ -497,7 +566,7 @@ function App() {
                 </ol>
               </div>
 
-              {/* Tabel IEEE LENGKAP */}
+              {/* Tabel IEEE */}
               <div
                 className={`p-6 rounded-2xl border ${
                   isDarkMode
