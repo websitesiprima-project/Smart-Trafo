@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   History,
   BookOpen,
   Zap,
   ArrowLeft,
-  Menu,
+  FileText, // Import Icon baru untuk menu Input
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
@@ -14,16 +14,21 @@ import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
-import DashboardPage from "./components/DashboardPage"; // Kita akan update ini di langkah 2
+
+// --- IMPORT HALAMAN ---
+import DashboardPage from "./components/DashboardPage"; // Dashboard Baru (Peta & Grafik)
+import InputFormPage from "./components/InputFormPage"; // Form Lama (Dipindahkan)
 import HistoryPage from "./components/HistoryPage";
 import GuidePage from "./components/GuidePage";
 import LandingPage from "./components/LandingPage";
 
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false); // Default Light Mode biar mirip kertas formulir
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePage, setActivePage] = useState("landing");
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [activeField, setActiveField] = useState(null);
 
-  // STATE DATA LENGKAP SESUAI BACKEND BARU
+  // --- STATE FORMULIR (DIGUNAKAN UNTUK HALAMAN INPUT) ---
   const [formData, setFormData] = useState({
     // Header Data
     no_dokumen: "-",
@@ -34,12 +39,10 @@ function App() {
     tahun_pembuatan: "",
     lokasi_gi: "",
     nama_trafo: "",
-
     // Sampling Data
-    tanggal_sampling: new Date().toISOString().split("T")[0], // Default hari ini
+    tanggal_sampling: new Date().toISOString().split("T")[0],
     suhu_sampel: 0,
     diambil_oleh: "",
-
     // Gas Data
     h2: 0,
     ch4: 0,
@@ -51,11 +54,11 @@ function App() {
   });
 
   const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // State loading untuk tombol submit
+
+  // --- STATE HISTORY ---
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const [activeField, setActiveField] = useState(null);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -64,24 +67,21 @@ function App() {
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
-    // Handle angka dan text
     const val = type === "number" ? parseFloat(value) || 0 : value;
     setFormData({ ...formData, [name]: val });
   };
 
-  // --- FUNGSI API ---
+  // --- FUNGSI API (SUBMIT FORM) ---
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
 
-    // Validasi Sederhana
     if (!formData.lokasi_gi || !formData.nama_trafo) {
       toast.error("Lokasi GI dan Nama Trafo wajib diisi!");
       return;
     }
 
     setLoading(true);
-    // Simulasi loading biar kerasa 'mikir'
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 800)); // Simulasi
 
     try {
       const response = await fetch("http://127.0.0.1:8000/predict", {
@@ -94,9 +94,13 @@ function App() {
       setResult(data);
       toast.success("Analisis Selesai!");
 
-      if (activePage === "history") fetchHistory();
       // Scroll ke hasil
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+      setTimeout(() => {
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 100);
     } catch (error) {
       console.error(error);
       toast.error("Gagal terhubung ke Server!");
@@ -104,6 +108,7 @@ function App() {
     setLoading(false);
   };
 
+  // --- FUNGSI API (HISTORY) ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -120,7 +125,7 @@ function App() {
     if (activePage === "history") fetchHistory();
   }, [activePage]);
 
-  // Landing Page
+  // --- RENDER LANDING PAGE ---
   if (activePage === "landing") {
     return (
       <LandingPage
@@ -131,6 +136,7 @@ function App() {
     );
   }
 
+  // --- RENDER MAIN APP ---
   return (
     <div
       className={`flex min-h-screen font-sans transition-colors duration-500 ${
@@ -147,7 +153,7 @@ function App() {
         onClose={() => setActiveField(null)}
       />
 
-      {/* SIDEBAR NAVIGATION ONLY */}
+      {/* --- SIDEBAR NAVIGATION --- */}
       <aside
         className={`fixed h-full border-r flex flex-col z-20 shadow-2xl transition-colors duration-500 ${
           isDarkMode
@@ -178,6 +184,7 @@ function App() {
 
           {/* Menu Items */}
           <nav className="space-y-2 flex-1">
+            {/* 1. DASHBOARD EKSEKUTIF (BARU) */}
             <button
               onClick={() => setActivePage("dashboard")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -186,8 +193,21 @@ function App() {
                   : "hover:bg-gray-100/10"
               }`}
             >
-              <LayoutDashboard size={20} /> Dashboard
+              <LayoutDashboard size={20} /> Dashboard Aset
             </button>
+
+            {/* 2. INPUT FORM (LAMA) */}
+            <button
+              onClick={() => setActivePage("input_dga")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                activePage === "input_dga"
+                  ? "bg-[#1B7A8F] text-white shadow-lg"
+                  : "hover:bg-gray-100/10"
+              }`}
+            >
+              <FileText size={20} /> Input Uji DGA
+            </button>
+
             <button
               onClick={() => setActivePage("history")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -198,6 +218,7 @@ function App() {
             >
               <History size={20} /> Riwayat
             </button>
+
             <button
               onClick={() => setActivePage("guide")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -223,21 +244,29 @@ function App() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
+      {/* --- MAIN CONTENT AREA --- */}
       <main
         className="flex-1 p-4 lg:p-8 transition-all duration-300"
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
         <AnimatePresence mode="wait">
+          {/* HALAMAN 1: DASHBOARD EKSEKUTIF (PETA & GRAFIK) */}
           {activePage === "dashboard" && (
             <PageTransition key="dashboard">
-              {/* Pass props ke DashboardPage baru */}
-              <DashboardPage
+              <DashboardPage isDarkMode={isDarkMode} />
+            </PageTransition>
+          )}
+
+          {/* HALAMAN 2: FORM INPUT DGA (FORM LAMA) */}
+          {activePage === "input_dga" && (
+            <PageTransition key="input_dga">
+              <InputFormPage
                 formData={formData}
                 handleChange={handleChange}
                 handleSubmit={handleSubmit}
                 result={result}
                 isDarkMode={isDarkMode}
+                isLoading={loading}
               />
             </PageTransition>
           )}
