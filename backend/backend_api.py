@@ -53,7 +53,7 @@ if SUPABASE_URL and SUPABASE_KEY:
 # Init Model ML
 model_trafo = None
 try:
-    with open("model_trafo.pkl", "rb") as f: 
+    with open("smart_dga_model.pkl", "rb") as f: 
         model_trafo = pickle.load(f)
 except: 
     model_trafo = None

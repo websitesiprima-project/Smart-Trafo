@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   FileText,
   Thermometer,
@@ -6,20 +6,59 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle,
+  Save,
 } from "lucide-react";
 import DuvalPentagon from "./DuvalPentagon";
-// IMPORT DATA GARDU INDUK UNTUK DROPDOWN
-import { allGIs, trafoMapping } from "../data/assetdata";
+import { allGIs, trafoDatabase } from "../data/assetdata";
 
 const InputFormPage = ({
   formData,
   handleChange,
+  setFormData, // Pastikan ini diterima dari App.js
   handleSubmit,
   result,
   isDarkMode,
   isLoading,
 }) => {
-  // Style Helper
+  // --- LOGIKA AUTOFILL (DENGAN PENGAMAN) ---
+  useEffect(() => {
+    // Cek 1: Pastikan fungsi setFormData ada
+    if (typeof setFormData !== "function") {
+      console.warn(
+        "PERINGATAN: setFormData tidak diterima dari App.js. Fitur Autofill dimatikan."
+      );
+      return;
+    }
+
+    // Cek 2: Pastikan data database tersedia
+    if (!trafoDatabase) {
+      console.error("ERROR: trafoDatabase tidak ditemukan di assetData.js");
+      return;
+    }
+
+    if (formData.lokasi_gi && formData.nama_trafo) {
+      const giData = trafoDatabase[formData.lokasi_gi];
+
+      // Cek 3: Pastikan data GI ditemukan
+      if (!giData) return;
+
+      const selectedTrafo = giData.find((t) => t.name === formData.nama_trafo);
+
+      if (selectedTrafo) {
+        console.log("Auto-filling data...", selectedTrafo);
+        setFormData((prev) => ({
+          ...prev,
+          merk_trafo: selectedTrafo.merk || "",
+          serial_number: selectedTrafo.sn || "",
+          tahun_pembuatan: selectedTrafo.year || "",
+          level_tegangan: selectedTrafo.volt || "",
+          jenis_minyak: selectedTrafo.oilType || prev.jenis_minyak || "",
+        }));
+      }
+    }
+  }, [formData.lokasi_gi, formData.nama_trafo, setFormData]);
+
+  // Style helpers...
   const cardClass = `p-6 rounded-xl shadow-sm border transition-all ${
     isDarkMode ? "bg-[#1e293b] border-slate-700" : "bg-white border-slate-200"
   }`;
@@ -31,8 +70,11 @@ const InputFormPage = ({
       ? "bg-slate-900 border-slate-700 text-white"
       : "bg-gray-50 border-gray-300 text-gray-900"
   }`;
+  const readOnlyClass = `${inputClass} opacity-70 cursor-not-allowed ${
+    isDarkMode ? "bg-slate-800" : "bg-gray-100"
+  }`;
 
-  // Data Gas untuk Tabel Laporan
+  // Data Tabel Gas
   const gasTableData = [
     { no: 1, name: "Hidrogen", rumus: "H2", value: formData.h2 },
     { no: 2, name: "Metana", rumus: "CH4", value: formData.ch4 },
@@ -44,8 +86,8 @@ const InputFormPage = ({
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-20">
-      {/* --- HEADER --- */}
+    <div className="max-w-6xl mx-auto space-y-8 pb-20">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6 border-gray-200/50">
         <div>
           <h2
@@ -60,19 +102,13 @@ const InputFormPage = ({
               isDarkMode ? "text-slate-400" : "text-slate-500"
             }`}
           >
-            Standar: IEEE C57.104-2019 • PLN UPT Manado
+            Input Data Cerdas & Otomatis • Standar: IEEE C57.104-2019
           </p>
-        </div>
-        <div className="flex gap-2 no-print">
-          <div className="px-4 py-2 bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700] rounded-lg text-sm font-bold">
-            Metode: 90th Percentile
-          </div>
         </div>
       </div>
 
-      {/* --- FORM INPUT --- */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* I. IDENTITAS */}
+        {/* I. Identitas */}
         <div className={cardClass}>
           <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-100/10">
             <FileText className="text-[#1B7A8F]" />
@@ -81,298 +117,192 @@ const InputFormPage = ({
                 isDarkMode ? "text-white" : "text-gray-800"
               }`}
             >
-              I. Identitas Transformator
+              I. Identitas Transformator (Otomatis)
             </h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* --- DROPDOWN LOKASI GI (YANG BARU) --- */}
+            {/* Pilih GI */}
             <div>
               <label className={labelClass}>Lokasi / Gardu Induk</label>
-              <div className="relative">
-                <select
-                  name="lokasi_gi"
-                  value={formData.lokasi_gi}
-                  onChange={handleChange}
-                  className={inputClass}
-                  required
-                >
-                  <option value="">-- Pilih Gardu Induk --</option>
-                  {allGIs
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((gi, index) => (
-                      <option key={index} value={gi.name}>
-                        {gi.name}
-                      </option>
-                    ))}
-                </select>
-                {/* Panah Dropdown Custom */}
-                <div
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isDarkMode ? "text-slate-500" : "text-gray-400"
-                  }`}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* --- BAGIAN INI SUDAH DIPERBARUI AGAR OTOMATIS SESUAI GI --- */}
-            <div>
-              <label className={labelClass}>Nama / Bay Trafo</label>
-              <div className="relative">
-                <select
-                  name="nama_trafo"
-                  value={formData.nama_trafo}
-                  onChange={handleChange}
-                  className={inputClass}
-                  required
-                  disabled={!formData.lokasi_gi} // Terkunci jika belum pilih GI
-                >
-                  <option value="">-- Pilih Trafo --</option>
-                  {/* Cek apakah ada data mapping untuk GI yang dipilih */}
-                  {formData.lokasi_gi && trafoMapping[formData.lokasi_gi] ? (
-                    trafoMapping[formData.lokasi_gi].map((trafo, idx) => (
-                      <option key={idx} value={trafo}>
-                        {trafo}
-                      </option>
-                    ))
-                  ) : (
-                    <option value="" disabled>
-                      {formData.lokasi_gi
-                        ? "Data trafo tidak tersedia"
-                        : "Pilih Lokasi GI dulu"}
-                    </option>
-                  )}
-                </select>
-
-                {/* Ikon Panah */}
-                <div
-                  className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isDarkMode ? "text-slate-500" : "text-gray-400"
-                  }`}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Merk Trafo</label>
-              <input
-                type="text"
-                name="merk_trafo"
-                value={formData.merk_trafo}
-                onChange={handleChange}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={labelClass}>Serial Number</label>
-              <input
-                type="text"
-                name="serial_number"
-                value={formData.serial_number}
-                onChange={handleChange}
-                className={inputClass}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>Tegangan (kV)</label>
-                <input
-                  type="text"
-                  name="level_tegangan"
-                  value={formData.level_tegangan}
-                  onChange={handleChange}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>MVA</label>
-                <input
-                  type="text"
-                  name="mva"
-                  value={formData.mva}
-                  onChange={handleChange}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>Tahun Buat</label>
-              <input
-                type="text"
-                name="tahun_pembuatan"
-                value={formData.tahun_pembuatan}
-                onChange={handleChange}
-                className={inputClass}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* II. DATA SAMPLING */}
-        <div className={cardClass}>
-          <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-100/10">
-            <Thermometer className="text-[#1B7A8F]" />
-            <h3
-              className={`font-bold text-lg ${
-                isDarkMode ? "text-white" : "text-gray-800"
-              }`}
-            >
-              II. Data Sampling Minyak
-            </h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div>
-              <label className={labelClass}>Tanggal Sampling</label>
-              <input
-                type="date"
-                name="tanggal_sampling"
-                value={formData.tanggal_sampling}
+              <select
+                name="lokasi_gi"
+                value={formData.lokasi_gi}
                 onChange={handleChange}
                 className={inputClass}
                 required
-              />
+              >
+                <option value="">-- Pilih GI --</option>
+                {allGIs
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((gi, idx) => (
+                    <option key={idx} value={gi.name}>
+                      {gi.name}
+                    </option>
+                  ))}
+              </select>
             </div>
+
+            {/* Pilih Trafo (Safe Render) */}
             <div>
-              <label className={labelClass}>Suhu Sampel (°C)</label>
-              <input
-                type="number"
-                step="0.1"
-                name="suhu_sampel"
-                value={formData.suhu_sampel}
+              <label className={labelClass}>Unit Trafo</label>
+              <select
+                name="nama_trafo"
+                value={formData.nama_trafo}
                 onChange={handleChange}
                 className={inputClass}
-              />
+                disabled={!formData.lokasi_gi}
+                required
+              >
+                <option value="">-- Pilih Trafo --</option>
+                {formData.lokasi_gi && trafoDatabase[formData.lokasi_gi] ? (
+                  trafoDatabase[formData.lokasi_gi].map((t, idx) => (
+                    // GUNAKAN t.name AGAR TIDAK CRASH
+                    <option key={idx} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))
+                ) : (
+                  <option disabled>Data Kosong</option>
+                )}
+              </select>
             </div>
+
+            {/* Field Read Only */}
             <div>
-              <label className={labelClass}>Petugas Sampling</label>
+              <label className={labelClass}>Merk</label>
               <input
                 type="text"
-                name="diambil_oleh"
-                value={formData.diambil_oleh}
-                onChange={handleChange}
-                className={inputClass}
+                value={formData.merk_trafo}
+                readOnly
+                className={readOnlyClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>S/N</label>
+              <input
+                type="text"
+                value={formData.serial_number}
+                readOnly
+                className={readOnlyClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Tahun</label>
+              <input
+                type="text"
+                value={formData.tahun_pembuatan}
+                readOnly
+                className={readOnlyClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Volt</label>
+              <input
+                type="text"
+                value={formData.level_tegangan}
+                readOnly
+                className={readOnlyClass}
               />
             </div>
           </div>
         </div>
 
-        {/* III. INPUT GAS */}
-        <div className={`${cardClass} border-l-4 border-l-[#1B7A8F]`}>
-          <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-100/10">
-            <FlaskConical className="text-[#1B7A8F]" />
-            <h3
-              className={`font-bold text-lg ${
-                isDarkMode ? "text-white" : "text-gray-800"
-              }`}
-            >
-              III. Konsentrasi Gas (PPM)
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-            {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map((gas) => (
-              <div key={gas} className="group">
-                <label
-                  className={`block text-center mb-2 font-bold uppercase ${
-                    isDarkMode ? "text-white" : "text-gray-700"
-                  }`}
-                >
-                  {gas}
-                </label>
+        {/* II & III. Sampling & Gas */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={cardClass}>
+            <div className="flex items-center gap-3 mb-4 text-orange-500 font-bold border-b pb-2">
+              <Thermometer size={18} /> II. Data Sampling
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Tanggal</label>
                 <input
-                  type="number"
-                  name={gas}
-                  value={formData[gas] || 0}
+                  type="date"
+                  name="tanggal_sampling"
+                  value={formData.tanggal_sampling}
                   onChange={handleChange}
-                  className={`${inputClass} text-center font-mono font-bold text-lg`}
+                  className={inputClass}
+                  required
                 />
               </div>
-            ))}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Suhu (°C)</label>
+                  <input
+                    type="number"
+                    name="suhu_sampel"
+                    value={formData.suhu_sampel}
+                    onChange={handleChange}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Petugas</label>
+                  <input
+                    type="text"
+                    name="diambil_oleh"
+                    value={formData.diambil_oleh}
+                    onChange={handleChange}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className={cardClass}>
+            <div className="flex items-center gap-3 mb-4 text-green-500 font-bold border-b pb-2">
+              <FlaskConical size={18} /> III. Konsentrasi Gas (ppm)
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map((gas) => (
+                <div key={gas}>
+                  <label className="block text-center text-[10px] font-bold uppercase mb-1">
+                    {gas}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    name={gas}
+                    value={formData[gas]}
+                    onChange={handleChange}
+                    className={`${inputClass} text-center font-mono`}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* TOMBOL ANALISA */}
         <button
           type="submit"
           disabled={isLoading}
-          className={`w-full py-4 font-bold text-lg rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all ${
-            isLoading
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-[#FFD700] hover:bg-[#e6c200] text-black hover:scale-[1.01]"
-          }`}
+          className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all"
         >
           {isLoading ? (
-            <>
-              <svg
-                className="animate-spin h-5 w-5 text-gray-600"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              SEDANG MENGANALISIS...
-            </>
+            "Memproses..."
           ) : (
             <>
-              {" "}
-              <Activity size={24} /> ANALISA KONDISI TRAFO SEKARANG{" "}
+              <Activity /> ANALISA SEKARANG
             </>
           )}
         </button>
       </form>
 
-      {/* --- TOMBOL CETAK --- */}
+      {/* RESULT SECTION (SAMA SEPERTI SEBELUMNYA) */}
       {result && (
-        <div className="flex justify-end mt-8 mb-4 no-print">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            <FileText size={18} /> Simpan sebagai PDF / Cetak Laporan
-          </button>
-        </div>
-      )}
-
-      {/* --- HASIL ANALISIS (REPORT MODE) --- */}
-      {result && (
-        <div className={`space-y-8 animate-in fade-in slide-in-from-bottom-10`}>
-          {/* KOP LAPORAN */}
+        <div
+          className={`mt-10 pt-10 border-t-4 border-dashed ${
+            isDarkMode ? "border-slate-700" : "border-gray-300"
+          }`}
+        >
+          <div className="flex justify-end mb-4 no-print">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg"
+            >
+              <FileText size={18} /> Cetak Laporan
+            </button>
+          </div>
           <div
             className={`p-8 rounded-2xl border-2 ${
               isDarkMode
@@ -382,36 +312,31 @@ const InputFormPage = ({
           >
             <div className="text-center mb-8 pb-6 border-b border-gray-300">
               <h2
-                className={`text-xl font-bold uppercase tracking-wide ${
+                className={`text-xl font-bold uppercase ${
                   isDarkMode ? "text-white" : "text-black"
                 }`}
               >
-                Laporan Analisis DGA (Dissolved Gas Analysis)
+                Laporan Analisis DGA
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                Metode Analisis: IEEE C57.104-2019 & Duval Pentagon
+                Metode: IEEE C57.104-2019 & Duval Pentagon
               </p>
             </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* --- BAGIAN KIRI: TABEL DATA --- */}
+              {/* TABLE */}
               <div>
                 <h4 className="text-sm font-bold text-gray-500 uppercase mb-3">
-                  Tabel V: Data Uji Konsentrasi Gas
+                  Tabel V: Data Uji Konsentrasi
                 </h4>
                 <div className="overflow-hidden border border-black rounded-sm">
                   <table className="w-full text-sm text-left">
                     <thead className="bg-gray-100 text-black font-bold uppercase border-b border-black">
                       <tr>
-                        <th className="px-4 py-2 border-r border-black w-12 text-center">
+                        <th className="px-4 py-2 border-r border-black w-12">
                           No
                         </th>
-                        <th className="px-4 py-2 border-r border-black">
-                          Combustible Gas
-                        </th>
-                        <th className="px-4 py-2 text-center">
-                          Konsentrasi (ppm)
-                        </th>
+                        <th className="px-4 py-2 border-r border-black">Gas</th>
+                        <th className="px-4 py-2 text-center">ppm</th>
                       </tr>
                     </thead>
                     <tbody
@@ -419,66 +344,57 @@ const InputFormPage = ({
                         isDarkMode ? "text-gray-200" : "text-black"
                       }`}
                     >
-                      {gasTableData.map((row) => (
-                        <tr key={row.no} className="hover:bg-gray-50/10">
-                          <td className="px-4 py-2 border-r border-black text-center font-medium">
-                            {row.no}
+                      {gasTableData.map((r) => (
+                        <tr key={r.no}>
+                          <td className="px-4 py-2 border-r border-black text-center">
+                            {r.no}
                           </td>
                           <td className="px-4 py-2 border-r border-black">
-                            {row.name}{" "}
-                            <span className="text-xs text-gray-500 ml-1">
-                              ({row.rumus})
-                            </span>
+                            {r.name} ({r.rumus})
                           </td>
                           <td className="px-4 py-2 text-center font-bold font-mono">
-                            {row.value}
+                            {r.value}
                           </td>
                         </tr>
                       ))}
-                      <tr className="bg-gray-100 font-bold border-t-2 border-black text-black">
-                        <td className="px-4 py-2 border-r border-black text-center">
-                          -
-                        </td>
-                        <td className="px-4 py-2 border-r border-black uppercase">
-                          Total Combustible Gas (TDCG)
+                      <tr className="bg-gray-100 text-black font-bold border-t-2 border-black">
+                        <td
+                          colSpan="2"
+                          className="px-4 py-2 border-r border-black text-right"
+                        >
+                          TDCG
                         </td>
                         <td className="px-4 py-2 text-center text-lg">
-                          {result.tdcg_value.toFixed(0)}
+                          {result.tdcg_value?.toFixed(0)}
                         </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
-
-              {/* --- BAGIAN KANAN: STATUS & VISUALISASI --- */}
+              {/* VISUAL & STATUS */}
               <div className="space-y-6">
-                {/* STATUS BOX */}
                 <div
                   className={`p-6 border-l-8 rounded-r-lg shadow-sm ${
                     result.ieee_status.includes("Normal")
                       ? "bg-green-50 border-green-500 text-green-900"
-                      : result.ieee_status.includes("KRITIS")
-                      ? "bg-red-50 border-red-500 text-red-900"
-                      : "bg-orange-50 border-orange-500 text-orange-900"
+                      : "bg-red-50 border-red-500 text-red-900"
                   }`}
                 >
                   <h4 className="text-xs font-bold uppercase opacity-60 mb-1">
-                    Status Kondisi (IEEE C57.104)
+                    Status IEEE C57.104
                   </h4>
                   <div className="text-3xl font-extrabold flex items-center gap-3">
                     {result.ieee_status.includes("Normal") ? (
                       <CheckCircle size={32} />
                     ) : (
                       <AlertTriangle size={32} />
-                    )}
+                    )}{" "}
                     {result.ieee_status}
                   </div>
                 </div>
-
-                {/* --- VISUALISASI PENTAGON --- */}
-                <div className="flex flex-col items-center justify-center pt-4">
-                  <div className="w-full max-w-[320px] transform scale-100 hover:scale-105 transition-transform">
+                <div className="flex justify-center">
+                  <div className="w-[300px]">
                     <DuvalPentagon
                       h2={formData.h2}
                       ch4={formData.ch4}
@@ -490,45 +406,31 @@ const InputFormPage = ({
                 </div>
               </div>
             </div>
-
-            {/* --- DIAGNOSA NARATIF --- */}
-            <div className="mt-8 border-t border-gray-300 pt-6">
+            {/* NARRATIVE */}
+            <div className="mt-8 pt-6 border-t border-gray-300">
               <h4 className="text-sm font-bold text-gray-500 uppercase mb-3">
-                Hasil Analisis & Rekomendasi
+                Diagnosa & Rekomendasi
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border border-black rounded-sm overflow-hidden">
-                <div className="p-4 border-b md:border-b-0 md:border-r border-black bg-gray-50">
+                <div className="p-4 bg-gray-50 border-r border-black text-black">
                   <h5 className="font-bold text-xs uppercase text-gray-600 mb-2">
                     Diagnosa Teknis
                   </h5>
-                  <ul className="list-disc list-inside text-sm space-y-1 text-black font-medium">
+                  <ul className="text-sm space-y-1 list-disc list-inside">
+                    <li>Rogers: {result.rogers_diagnosis}</li>
+                    <li>Key Gas: {result.key_gas}</li>
                     <li>
-                      <strong>Rogers Ratio:</strong> {result.rogers_diagnosis}
-                    </li>
-                    <li>
-                      <strong>Key Gas:</strong> {result.key_gas}
-                    </li>
-                    <li>
-                      <strong>Detail IEEE:</strong>{" "}
-                      {result.diagnosis || result.diagnosa}
+                      Detail: {result.diagnosis_ieee || result.ieee_status}
                     </li>
                   </ul>
                 </div>
-                <div className="p-4 bg-white">
-                  <h5 className="font-bold text-xs uppercase text-blue-600 mb-2 flex items-center gap-2">
-                    <Activity size={14} /> Rekomendasi Volty AI
+                <div className="p-4 bg-white text-black">
+                  <h5 className="font-bold text-xs uppercase text-blue-600 mb-2 flex gap-2">
+                    <Activity size={14} /> Rekomendasi AI
                   </h5>
-                  <p className="text-sm text-justify leading-relaxed text-gray-800">
-                    "{result.volty_chat}"
-                  </p>
+                  <p className="text-sm text-justify">"{result.volty_chat}"</p>
                 </div>
               </div>
-            </div>
-
-            {/* FOOTER */}
-            <div className="mt-8 pt-4 border-t border-dashed border-gray-300 flex justify-between text-[10px] text-gray-400 uppercase">
-              <span>Dicetak oleh: Volty AI System</span>
-              <span>{new Date().toLocaleString()}</span>
             </div>
           </div>
         </div>

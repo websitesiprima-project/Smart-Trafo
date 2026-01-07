@@ -5,7 +5,8 @@ import {
   BookOpen,
   Zap,
   ArrowLeft,
-  FileText, // Import Icon baru untuk menu Input
+  FileText, // Icon untuk menu Input
+  TrendingUp, // Icon untuk menu Trending
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
@@ -16,8 +17,9 @@ import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
 
 // --- IMPORT HALAMAN ---
-import DashboardPage from "./components/DashboardPage"; // Dashboard Baru (Peta & Grafik)
-import InputFormPage from "./components/InputFormPage"; // Form Lama (Dipindahkan)
+import DashboardPage from "./components/DashboardPage"; // Dashboard (Peta)
+import InputFormPage from "./components/InputFormPage"; // Form Input DGA
+import TrendingPage from "./components/TrendingPage"; // Halaman Grafik (Baru)
 import HistoryPage from "./components/HistoryPage";
 import GuidePage from "./components/GuidePage";
 import LandingPage from "./components/LandingPage";
@@ -28,9 +30,9 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [activeField, setActiveField] = useState(null);
 
-  // --- STATE FORMULIR (DIGUNAKAN UNTUK HALAMAN INPUT) ---
+  // --- STATE FORMULIR UTAMA ---
   const [formData, setFormData] = useState({
-    // Header Data
+    // Header Data (Akan di-autofill)
     no_dokumen: "-",
     merk_trafo: "",
     serial_number: "",
@@ -39,10 +41,13 @@ function App() {
     tahun_pembuatan: "",
     lokasi_gi: "",
     nama_trafo: "",
+    jenis_minyak: "",
+
     // Sampling Data
     tanggal_sampling: new Date().toISOString().split("T")[0],
     suhu_sampel: 0,
     diambil_oleh: "",
+
     // Gas Data
     h2: 0,
     ch4: 0,
@@ -54,7 +59,7 @@ function App() {
   });
 
   const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false); // State loading untuk tombol submit
+  const [loading, setLoading] = useState(false);
 
   // --- STATE HISTORY ---
   const [historyData, setHistoryData] = useState([]);
@@ -81,20 +86,26 @@ function App() {
     }
 
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 800)); // Simulasi
+    // Simulasi Delay agar loading terlihat
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     try {
+      // GANTI URL INI SESUAI BACKEND ANDA
       const response = await fetch("http://127.0.0.1:8000/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
+
+      if (!response.ok) {
+        throw new Error("Gagal memproses data");
+      }
+
       const data = await response.json();
-
       setResult(data);
-      toast.success("Analisis Selesai!");
+      toast.success("Analisis Selesai! Cek hasil di bawah.");
 
-      // Scroll ke hasil
+      // Auto Scroll ke hasil
       setTimeout(() => {
         window.scrollTo({
           top: document.body.scrollHeight,
@@ -103,7 +114,15 @@ function App() {
       }, 100);
     } catch (error) {
       console.error(error);
-      toast.error("Gagal terhubung ke Server!");
+      toast.error("Gagal terhubung ke Server AI!");
+      // Fallback Dummy Data jika Backend mati (Bisa dihapus nanti)
+      setResult({
+        ieee_status: "Normal",
+        rogers_diagnosis: "No Fault",
+        key_gas: "H2",
+        tdcg_value: formData.h2 + formData.ch4 + formData.co,
+        volty_chat: "Sistem offline. Ini adalah hasil simulasi sementara.",
+      });
     }
     setLoading(false);
   };
@@ -116,7 +135,7 @@ function App() {
       const data = await response.json();
       setHistoryData(data);
     } catch (error) {
-      toast.error("Gagal ambil history");
+      toast.error("Gagal mengambil data riwayat");
     }
     setLoadingHistory(false);
   };
@@ -184,7 +203,6 @@ function App() {
 
           {/* Menu Items */}
           <nav className="space-y-2 flex-1">
-            {/* 1. DASHBOARD EKSEKUTIF (BARU) */}
             <button
               onClick={() => setActivePage("dashboard")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -196,7 +214,6 @@ function App() {
               <LayoutDashboard size={20} /> Dashboard Aset
             </button>
 
-            {/* 2. INPUT FORM (LAMA) */}
             <button
               onClick={() => setActivePage("input_dga")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -206,6 +223,17 @@ function App() {
               }`}
             >
               <FileText size={20} /> Input Uji DGA
+            </button>
+
+            <button
+              onClick={() => setActivePage("trending")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                activePage === "trending"
+                  ? "bg-[#1B7A8F] text-white shadow-lg"
+                  : "hover:bg-gray-100/10"
+              }`}
+            >
+              <TrendingUp size={20} /> Analisis Trending
             </button>
 
             <button
@@ -250,18 +278,19 @@ function App() {
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
         <AnimatePresence mode="wait">
-          {/* HALAMAN 1: DASHBOARD EKSEKUTIF (PETA & GRAFIK) */}
+          {/* HALAMAN 1: DASHBOARD */}
           {activePage === "dashboard" && (
             <PageTransition key="dashboard">
               <DashboardPage isDarkMode={isDarkMode} />
             </PageTransition>
           )}
 
-          {/* HALAMAN 2: FORM INPUT DGA (FORM LAMA) */}
+          {/* HALAMAN 2: INPUT FORM (PENTING: ada setFormData) */}
           {activePage === "input_dga" && (
             <PageTransition key="input_dga">
               <InputFormPage
                 formData={formData}
+                setFormData={setFormData} // <--- INI KUNCI AGAR AUTOFILL JALAN
                 handleChange={handleChange}
                 handleSubmit={handleSubmit}
                 result={result}
@@ -271,6 +300,14 @@ function App() {
             </PageTransition>
           )}
 
+          {/* HALAMAN 3: TRENDING (BARU) */}
+          {activePage === "trending" && (
+            <PageTransition key="trending">
+              <TrendingPage isDarkMode={isDarkMode} />
+            </PageTransition>
+          )}
+
+          {/* HALAMAN 4: RIWAYAT */}
           {activePage === "history" && (
             <PageTransition key="history">
               <HistoryPage
@@ -282,6 +319,7 @@ function App() {
             </PageTransition>
           )}
 
+          {/* HALAMAN 5: PANDUAN */}
           {activePage === "guide" && (
             <PageTransition key="guide">
               <GuidePage isDarkMode={isDarkMode} />
