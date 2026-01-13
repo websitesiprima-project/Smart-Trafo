@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import pickle
+import joblib  # <--- SUDAH DIGANTI (PENTING)
 import numpy as np
 import os
+import sys
 from groq import Groq
 from supabase import create_client, Client
 from dotenv import load_dotenv 
@@ -51,16 +52,29 @@ if SUPABASE_URL and SUPABASE_KEY:
     except Exception as e:
         print(f"❌ Supabase Error: {e}")
 
-# Init Model ML
+# ==========================================
+# 4. INIT MODEL ML (BAGIAN PERBAIKAN UTAMA)
+# ==========================================
 model_trafo = None
 try:
-    with open("smart_dga_model.pkl", "rb") as f: 
-        model_trafo = pickle.load(f)
-    print("✅ ML Model Loaded")
-except: 
-    print("⚠️ ML Model Not Found (Running without ML)")
+    # Menggunakan Absolute Path agar file pasti ditemukan dimanapun terminal dibuka
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(current_dir, "smart_dga_model.pkl")
+    
+    # Cek apakah file ada
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"File tidak ditemukan di path: {model_path}")
 
-# 4. DATA MODELS
+    # LOAD MENGGUNAKAN JOBLIB (Bukan Pickle)
+    model_trafo = joblib.load(model_path)
+    print("✅ ML Model Loaded (via Joblib)")
+    
+except Exception as e: 
+    print(f"❌ ERROR LOADING MODEL: {str(e)}")
+    print("⚠️ System running without ML prediction.")
+
+
+# 5. DATA MODELS
 class TrafoInput(BaseModel):
     no_dokumen: str = "-"
     merk_trafo: str = ""
@@ -83,16 +97,15 @@ class TrafoInput(BaseModel):
 
 class ChatInput(BaseModel):
     message: str
-    context: str = ""  # [UPDATE POIN 2] Field baru untuk mengirim data trafo ke AI
+    context: str = "" 
 
 # ==========================================
-# 5. METODE ANALISIS TEKNIS (LENGKAP)
+# 6. METODE ANALISIS TEKNIS
 # ==========================================
 
 def hitung_tdcg(data: TrafoInput):
     return data.h2 + data.ch4 + data.c2h6 + data.c2h4 + data.c2h2 + data.co
 
-# [UPDATE POIN 3] Analisis Kesehatan Kertas Isolasi
 def analisis_ratio_co2_co(data: TrafoInput):
     if data.co == 0: return "Tidak Dapat Dihitung (CO=0)", 0
     ratio = round(data.co2 / data.co, 2)
@@ -106,21 +119,18 @@ def analisis_ratio_co2_co(data: TrafoInput):
         
     return status, ratio
 
-# [UPDATE POIN 1] Analisis Duval Triangle 1
 def analisis_duval_triangle_1(data: TrafoInput):
     total = data.ch4 + data.c2h4 + data.c2h2
     if total == 0:
         return "Gas Kosong (Total 0)", 0, 0, 0
 
-    # Hitung Koordinat Segitiga (%)
     pct_ch4 = round((data.ch4 / total) * 100, 1)
     pct_c2h4 = round((data.c2h4 / total) * 100, 1)
     pct_c2h2 = round((data.c2h2 / total) * 100, 1)
 
     diagnosa = "Tidak Teridentifikasi"
 
-    # Logika Zone Duval Triangle 1 (IEEE C57.104 / IEC 60599)
-    # Urutan 'if' sangat penting karena irisan area
+    # Logika Zone Duval Triangle 1 (Standard IEEE/IEC)
     if pct_c2h2 >= 98:
         diagnosa = "PD: Partial Discharge"
     elif pct_c2h2 >= 87 and pct_c2h2 < 98 and pct_ch4 < 13:
@@ -130,7 +140,6 @@ def analisis_duval_triangle_1(data: TrafoInput):
     elif pct_c2h2 > 13 and pct_c2h4 < 23:
          diagnosa = "D1: Discharge of Low Energy (Sparking)"
     elif pct_c2h2 < 13 and pct_c2h2 > 0 and pct_c2h4 >= 23 and pct_c2h4 < 50:
-         # Area irisan D2/DT, seringkali diklasifikasikan ke D2 jika C2H2 ada
          diagnosa = "D2: Discharge of High Energy"
     elif pct_c2h4 >= 50:
         diagnosa = "T3: Thermal Fault > 700°C"
@@ -139,10 +148,8 @@ def analisis_duval_triangle_1(data: TrafoInput):
     elif pct_ch4 >= 50 and pct_c2h4 < 20 and pct_c2h2 < 4:
          diagnosa = "T1: Thermal Fault < 300°C"
     elif pct_c2h2 < 2 and pct_c2h4 < 2:
-         # Sisa area didominasi CH4 atau gas lain di zona T1/PD
          diagnosa = "T1: Thermal Fault < 300°C" 
     else:
-        # Jika masuk area tengah (DT)
         diagnosa = "DT: Campuran (Thermal & Electrical)"
 
     return diagnosa, pct_ch4, pct_c2h4, pct_c2h2
@@ -196,20 +203,18 @@ def analisis_key_gas(data: TrafoInput):
     return f"Dominan {dominant_gas}"
 
 # ==========================================
-# 6. ENDPOINTS
+# 7. ENDPOINTS
 # ==========================================
 
 @app.post("/chat")
 def chat_with_volty(data: ChatInput):
     if not groq_client: return {"reply": "Maaf, koneksi AI sedang offline."}
     
-    # [UPDATE POIN 2] Menggabungkan pesan user dengan context data (jika ada)
     system_msg = "Anda adalah Volty, asisten teknis PLN. Jawab singkat, padat, dan teknis."
     user_msg = data.message
     
     if data.context:
-        # Jika frontend mengirim data trafo, selipkan ke dalam prompt sebagai background info
-        system_msg += f"\n\nKONTEKS DATA TRAFO SAAT INI (Gunakan ini untuk menjawab pertanyaan user):\n{data.context}"
+        system_msg += f"\n\nKONTEKS DATA TRAFO SAAT INI:\n{data.context}"
         
     try:
         chat = groq_client.chat.completions.create(
@@ -226,7 +231,7 @@ def chat_with_volty(data: ChatInput):
 
 @app.post("/predict")
 def predict(data: TrafoInput):
-    # 1. Jalankan Analisis Lengkap (Termasuk Duval & CO2/CO)
+    # 1. Jalankan Analisis Lengkap
     tdcg = hitung_tdcg(data)
     ieee_status, ieee_note = analisis_ieee_2019(data)
     rogers_res, val_r1, val_r2, val_r5 = analisis_rogers_ratio(data)
@@ -234,12 +239,17 @@ def predict(data: TrafoInput):
     duval_res, pct_ch4, pct_c2h4, pct_c2h2 = analisis_duval_triangle_1(data)
     paper_status, paper_ratio = analisis_ratio_co2_co(data)
     
-    # 2. Prediksi Machine Learning
-    ml_res = "Unknown"
+    # 2. Prediksi Machine Learning (Dengan Safety Check)
+    ml_res = "ML Not Active"
     if model_trafo:
-        try: 
-            ml_res = model_trafo.predict([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])[0]
-        except: pass
+        try:
+            # Pastikan urutan fitur sama dengan saat training!
+            # [H2, CH4, C2H2, C2H4, C2H6] <- Default urutan DGA
+            features = np.array([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])
+            ml_res = model_trafo.predict(features)[0]
+        except Exception as e:
+            print(f"ML Predict Error: {e}")
+            ml_res = "Error Prediction"
 
     # 3. Analisis AI (Groq)
     volty_chat = "AI sedang menganalisis..."
@@ -265,6 +275,7 @@ def predict(data: TrafoInput):
         - Duval Triangle: {duval_res} (CH4:{pct_ch4}%, C2H4:{pct_c2h4}%, C2H2:{pct_c2h2}%)
         - Rogers: {rogers_res}
         - Isolasi Kertas: {paper_status} (Ratio: {paper_ratio})
+        - Prediksi ML: {ml_res}
         """
         
         try:
@@ -292,7 +303,7 @@ def predict(data: TrafoInput):
         except Exception as e:
             print(f"DB Error: {e}")
 
-    # 5. Return Response Lengkap
+    # 5. Return Response
     return {
         "status": "Sukses",
         "tdcg_value": tdcg,
