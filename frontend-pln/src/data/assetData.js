@@ -1,8 +1,7 @@
 // src/data/assetData.js
 
 // ============================================================================
-// 1. DATABASE TRAFO LENGKAP (86 DATA)
-// Sumber: Dokumen Aset Trafo (Row 1 - 86)
+// 1. DATABASE TRAFO LENGKAP (UPDATE STATUS 2026)
 // ============================================================================
 
 export const trafoDatabase = {
@@ -54,7 +53,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "Standby Dingin",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #3",
       merk: "PASTI",
@@ -92,7 +91,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "Tidak Operasi",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #6",
       merk: "UNINDO",
@@ -102,7 +101,6 @@ export const trafoDatabase = {
       status: "Normal",
       op_status: "Operasi",
     },
-    // Aset Nusantara Power
     {
       name: "TD #2",
       merk: "UNINDO",
@@ -169,7 +167,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "Tidak Operasi",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #3",
       merk: "SCHNEIDER",
@@ -229,7 +227,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Standby Dingin",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #2",
       merk: "SCHNEIDER",
@@ -324,7 +322,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "ATTB",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #3",
       merk: "B&D",
@@ -482,7 +480,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "Tidak Operasi",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #2",
       merk: "HYUNDAI",
@@ -491,7 +489,7 @@ export const trafoDatabase = {
       volt: "70 kV",
       status: "Normal",
       op_status: "Standby Dingin",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #3",
       merk: "SCHNEIDER",
@@ -538,7 +536,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "ATTB",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #3",
       merk: "B&D",
@@ -558,7 +556,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Tidak Operasi",
-    },
+    }, // UPDATE 2026
     {
       name: "TD #2",
       merk: "B&D",
@@ -689,7 +687,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Belum Operasi",
-    },
+    }, // UPDATE 2026
     {
       name: "GT #2",
       merk: "-",
@@ -698,7 +696,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Belum Operasi",
-    },
+    }, // UPDATE 2026
   ],
 
   // --- ULTG GORONTALO ---
@@ -749,7 +747,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Operasi",
-    }, // Data row 86
+    },
   ],
   "GI TOLINGGULA": [
     {
@@ -842,7 +840,7 @@ export const trafoDatabase = {
       volt: "150 kV",
       status: "Normal",
       op_status: "Operasi",
-    }, // Data row 85
+    },
   ],
   "PLTG MALEO": [
     {
@@ -877,63 +875,28 @@ export const trafoDatabase = {
   ],
 };
 
-// 2. DATA HISTORIS DGA (DUMMY/SAMPEL UNTUK CHART)
-// Data ini nanti akan diganti dengan API/Database riil
-export const historicalDGA = {
-  // Contoh format data:
-  "GI MARISA - TD #1": [
-    {
-      date: "2023-01-01",
-      H2: 10,
-      CH4: 5,
-      C2H6: 2,
-      C2H4: 1,
-      C2H2: 0,
-      CO: 100,
-      CO2: 500,
-    },
-    {
-      date: "2023-06-01",
-      H2: 12,
-      CH4: 6,
-      C2H6: 2,
-      C2H4: 1,
-      C2H2: 0,
-      CO: 110,
-      CO2: 520,
-    },
-    {
-      date: "2024-01-01",
-      H2: 15,
-      CH4: 8,
-      C2H6: 3,
-      C2H4: 2,
-      C2H2: 0,
-      CO: 150,
-      CO2: 600,
-    },
-  ],
-  // Tambahkan data lainnya jika perlu...
-};
+// 2. DATA HISTORIS DGA (DUMMY/PLACEHOLDER)
+export const historicalDGA = {};
 
-// 3. DATA LOKASI GI (KOORDINAT)
-// Digunakan untuk Peta Dashboard.
-// (Saya lengkapi koordinat perkiraan untuk GI yang ada di tabel Anda)
+// 3. DATA LOKASI GI (KOORDINAT UPDATE & AKURAT)
 export const ultgData = {
   sawangan: {
     name: "ULTG Sawangan",
     center: "GI Teling",
-    stats: { gi: 12, td: 30 }, // Diupdate berdasarkan tabel
+    stats: { gi: 12, td: 30 },
     gis: [
-      { name: "GI TELING", lat: 1.4573, lng: 124.855 },
-      { name: "GI RANOMUUT", lat: 1.474, lng: 124.862 },
-      { name: "GI BITUNG", lat: 1.442, lng: 125.121 },
-      { name: "GIS TELING", lat: 1.458, lng: 124.856 }, // Dekat GI Teling
-      { name: "GI PANIKI", lat: 1.51, lng: 124.91 },
-      { name: "GI TANJUNG MERAH", lat: 1.46, lng: 125.1 },
-      { name: "GI LIKUPANG", lat: 1.67, lng: 125.05 },
-      { name: "GI KEMA", lat: 1.37, lng: 125.08 },
-      { name: "GI PANDU", lat: 1.53, lng: 124.85 },
+      { name: "GI TELING", lat: 1.457336, lng: 124.855059 },
+      { name: "GIS TELING", lat: 1.455959, lng: 124.854795 },
+      { name: "GIS SARIO", lat: 1.472658, lng: 124.834575 },
+      { name: "GI KEMA", lat: 1.378393, lng: 125.09294 },
+      { name: "GI TANJUNG MERAH", lat: 1.410828, lng: 125.118346 },
+      { name: "GI BITUNG", lat: 1.44618, lng: 125.189351 },
+      { name: "GI RANOMUUT", lat: 1.48577, lng: 124.864434 },
+      { name: "GI PANIKI", lat: 1.493951, lng: 124.926008 },
+      { name: "GI PANDU", lat: 1.581681, lng: 124.880007 },
+      { name: "GI LIKUPANG", lat: 1.657975, lng: 125.094155 },
+      { name: "GI LIKUPANG NEW", lat: 1.657344, lng: 125.094891 },
+      { name: "GI MSM", lat: 1.603447, lng: 125.125394 },
     ],
   },
   lopana: {
@@ -941,13 +904,14 @@ export const ultgData = {
     center: "GI Lopana",
     stats: { gi: 8, td: 25 },
     gis: [
-      { name: "GI LOPANA", lat: 1.18, lng: 124.6 },
-      { name: "GI TOMOHON", lat: 1.32, lng: 124.83 },
-      { name: "GI KAWANGKOAN", lat: 1.185, lng: 124.75 },
-      { name: "GI TONSEALAMA", lat: 1.28, lng: 124.9 },
-      { name: "GI AMURANG", lat: 1.2, lng: 124.58 },
-      { name: "GI TASIKRIA", lat: 1.39, lng: 124.78 },
-      { name: "GI SAWANGAN", lat: 1.38, lng: 124.95 },
+      { name: "GI AMURANG", lat: 1.178765, lng: 124.476569 },
+      { name: "GI LOPANA", lat: 1.21957, lng: 124.604005 },
+      { name: "GI KAWANGKOAN", lat: 1.178573, lng: 124.795527 },
+      { name: "PLTP LAHENDONG 12", lat: 1.25852, lng: 124.823026 },
+      { name: "PLTP LAHENDONG 34", lat: 1.274652, lng: 124.835214 },
+      { name: "GI TOMOHON", lat: 1.313473, lng: 124.852141 },
+      { name: "GI TASIKRIA", lat: 1.419814, lng: 124.714655 },
+      { name: "GI TONSEALAMA", lat: 1.327098, lng: 124.924109 },
     ],
   },
   kotamobagu: {
@@ -955,10 +919,11 @@ export const ultgData = {
     center: "GI Otam",
     stats: { gi: 5, td: 10 },
     gis: [
-      { name: "GI OTAM", lat: 0.7, lng: 124.28 },
-      { name: "GI LOLAK", lat: 0.88, lng: 124.05 },
-      { name: "GI TUTUYAN", lat: 0.78, lng: 124.55 },
-      { name: "GI MOLIBAGU", lat: 0.45, lng: 123.95 },
+      { name: "PLTU SULUT 1", lat: 0.880897, lng: 123.468276 },
+      { name: "GI LOLAK", lat: 0.857543, lng: 123.995124 },
+      { name: "GI MOLIBAGU", lat: 0.384283, lng: 124.050773 },
+      { name: "GI OTAM", lat: 0.781282, lng: 124.293332 },
+      { name: "GI TUTUYAN", lat: 0.767402, lng: 124.601081 },
     ],
   },
   gorontalo: {
@@ -966,14 +931,14 @@ export const ultgData = {
     center: "GI Gorontalo Baru",
     stats: { gi: 8, td: 20 },
     gis: [
-      { name: "GI GORONTALO BARU", lat: 0.5847, lng: 123.0133 },
-      { name: "GI BOTUPINGGE", lat: 0.5283, lng: 123.1111 },
-      { name: "GI ISIMU", lat: 0.65, lng: 122.95 },
-      { name: "GI MARISA", lat: 0.4505, lng: 121.9547 },
-      { name: "GI TILAMUTA", lat: 0.5367, lng: 122.3681 },
-      { name: "GI BOROKO", lat: 0.9, lng: 123.25 },
-      { name: "GI ANGGREK", lat: 0.85, lng: 122.8 },
-      { name: "GI TOLINGGULA", lat: 0.95, lng: 122.5 },
+      { name: "GI MARISA", lat: 0.477281, lng: 122.012648 },
+      { name: "GI TILAMUTA", lat: 0.607596, lng: 122.482211 },
+      { name: "GI TOLINGGULA", lat: 1.019624, lng: 122.151656 },
+      { name: "GI ANGGREK", lat: 0.849741, lng: 122.797296 },
+      { name: "GI ISIMU", lat: 0.657144, lng: 122.886231 },
+      { name: "GI GORONTALO BARU", lat: 0.550913, lng: 123.025386 },
+      { name: "GI BOTUPINGGE", lat: 0.519715, lng: 123.126474 },
+      { name: "GI BOROKO", lat: 0.905201, lng: 123.255308 },
     ],
   },
 };
