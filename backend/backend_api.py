@@ -10,13 +10,13 @@ from dotenv import load_dotenv
 
 # 1. LOAD ENVIRONMENT
 load_dotenv()
-app = FastAPI()
+app = FastAPI(title="Volty AI Backend - Ultimate Version")
 
 # 2. KEAMANAN CORS
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    # "https://volty-frontend.vercel.app" # Aktifkan nanti pas deploy
+    "https://volty-frontend.vercel.app"
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -31,13 +31,14 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Init Groq (Dengan Type Hinting yang lebih aman)
+# Init Groq
 groq_client = None
 if GROQ_API_KEY:
     try:
         groq_client = Groq(api_key=GROQ_API_KEY)
-    except:
-        groq_client = None
+        print("✅ Groq Client Connected")
+    except Exception as e:
+        print(f"❌ Groq Error: {e}")
 
 # Init Supabase
 supabase = None
@@ -46,17 +47,18 @@ if SUPABASE_URL and SUPABASE_KEY:
     try:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         db_active = True
-    except:
-        supabase = None
-        db_active = False
+        print("✅ Supabase Connected")
+    except Exception as e:
+        print(f"❌ Supabase Error: {e}")
 
 # Init Model ML
 model_trafo = None
 try:
-    with open("model_trafo.pkl", "rb") as f: 
+    with open("smart_dga_model.pkl", "rb") as f: 
         model_trafo = pickle.load(f)
+    print("✅ ML Model Loaded")
 except: 
-    model_trafo = None
+    print("⚠️ ML Model Not Found (Running without ML)")
 
 # 4. DATA MODELS
 class TrafoInput(BaseModel):
@@ -81,16 +83,70 @@ class TrafoInput(BaseModel):
 
 class ChatInput(BaseModel):
     message: str
+    context: str = ""  # [UPDATE POIN 2] Field baru untuk mengirim data trafo ke AI
 
 # ==========================================
-# 5. METODE ANALISIS LENGKAP (5-in-1)
+# 5. METODE ANALISIS TEKNIS (LENGKAP)
 # ==========================================
 
-# A. TDCG (Total Dissolved Combustible Gas)
 def hitung_tdcg(data: TrafoInput):
     return data.h2 + data.ch4 + data.c2h6 + data.c2h4 + data.c2h2 + data.co
 
-# B. IEEE C57.104-2019 (Status Condition)
+# [UPDATE POIN 3] Analisis Kesehatan Kertas Isolasi
+def analisis_ratio_co2_co(data: TrafoInput):
+    if data.co == 0: return "Tidak Dapat Dihitung (CO=0)", 0
+    ratio = round(data.co2 / data.co, 2)
+    
+    if ratio < 3:
+        status = "Indikasi Fault Kertas (Carbonization)"
+    elif 3 <= ratio <= 10:
+        status = "Kertas Normal"
+    else:
+        status = "Degradasi Termal Ringan (<150°C)"
+        
+    return status, ratio
+
+# [UPDATE POIN 1] Analisis Duval Triangle 1
+def analisis_duval_triangle_1(data: TrafoInput):
+    total = data.ch4 + data.c2h4 + data.c2h2
+    if total == 0:
+        return "Gas Kosong (Total 0)", 0, 0, 0
+
+    # Hitung Koordinat Segitiga (%)
+    pct_ch4 = round((data.ch4 / total) * 100, 1)
+    pct_c2h4 = round((data.c2h4 / total) * 100, 1)
+    pct_c2h2 = round((data.c2h2 / total) * 100, 1)
+
+    diagnosa = "Tidak Teridentifikasi"
+
+    # Logika Zone Duval Triangle 1 (IEEE C57.104 / IEC 60599)
+    # Urutan 'if' sangat penting karena irisan area
+    if pct_c2h2 >= 98:
+        diagnosa = "PD: Partial Discharge"
+    elif pct_c2h2 >= 87 and pct_c2h2 < 98 and pct_ch4 < 13:
+         diagnosa = "PD: Partial Discharge"
+    elif pct_c2h2 > 13 and pct_c2h4 >= 23:
+        diagnosa = "D2: Discharge of High Energy (Arcing)"
+    elif pct_c2h2 > 13 and pct_c2h4 < 23:
+         diagnosa = "D1: Discharge of Low Energy (Sparking)"
+    elif pct_c2h2 < 13 and pct_c2h2 > 0 and pct_c2h4 >= 23 and pct_c2h4 < 50:
+         # Area irisan D2/DT, seringkali diklasifikasikan ke D2 jika C2H2 ada
+         diagnosa = "D2: Discharge of High Energy"
+    elif pct_c2h4 >= 50:
+        diagnosa = "T3: Thermal Fault > 700°C"
+    elif pct_c2h4 >= 20 and pct_c2h4 < 50 and pct_c2h2 < 4:
+        diagnosa = "T2: Thermal Fault 300-700°C"
+    elif pct_ch4 >= 50 and pct_c2h4 < 20 and pct_c2h2 < 4:
+         diagnosa = "T1: Thermal Fault < 300°C"
+    elif pct_c2h2 < 2 and pct_c2h4 < 2:
+         # Sisa area didominasi CH4 atau gas lain di zona T1/PD
+         diagnosa = "T1: Thermal Fault < 300°C" 
+    else:
+        # Jika masuk area tengah (DT)
+        diagnosa = "DT: Campuran (Thermal & Electrical)"
+
+    return diagnosa, pct_ch4, pct_c2h4, pct_c2h2
+
 def analisis_ieee_2019(data: TrafoInput):
     LIMITS = {'h2': 80, 'ch4': 90, 'c2h6': 90, 'c2h4': 50, 'c2h2': 1, 'co': 900}
     diagnosa = []
@@ -103,134 +159,149 @@ def analisis_ieee_2019(data: TrafoInput):
     if data.co > LIMITS['co']: diagnosa.append(f"CO Tinggi")
     
     if diagnosa: status = 2
-    if data.c2h2 > LIMITS['c2h2']: 
-        diagnosa.append("C2H2 Terdeteksi")
-        status = 3 if data.c2h2 >= 5 else 2
-    if data.c2h4 > (LIMITS['c2h4']*2) or data.ch4 > (LIMITS['ch4']*2): status = 3
     
-    status_text = "Normal" if status == 1 else ("Investigasi" if status == 2 else "KRITIS")
-    return status_text, ", ".join(diagnosa) if diagnosa else "Gas Normal"
+    if data.c2h2 > LIMITS['c2h2']: 
+        diagnosa.append(f"C2H2 Terdeteksi")
+        status = 3 if data.c2h2 >= 5 else 2 
+        
+    if data.c2h4 > (LIMITS['c2h4']*2) or data.ch4 > (LIMITS['ch4']*2): 
+        status = 3
+    
+    status_text = "Normal" if status == 1 else ("Waspada (Cond 2)" if status == 2 else "KRITIS (Cond 3)")
+    return status_text, ", ".join(diagnosa) if diagnosa else "Parameter Gas Normal"
 
-# C. ROGERS RATIO (IEC 60599)
 def analisis_rogers_ratio(data: TrafoInput):
-    # Rasio (Handle division by zero)
-    r1 = round(data.ch4 / data.h2, 2) if data.h2 > 0 else 0  # CH4/H2
-    r2 = round(data.c2h2 / data.c2h4, 2) if data.c2h4 > 0 else 0 # C2H2/C2H4
-    r5 = round(data.c2h4 / data.c2h6, 2) if data.c2h6 > 0 else 0 # C2H4/C2H6
+    r1 = round(data.ch4 / data.h2, 2) if data.h2 > 0 else 0
+    r2 = round(data.c2h2 / data.c2h4, 2) if data.c2h4 > 0 else 0
+    r5 = round(data.c2h4 / data.c2h6, 2) if data.c2h6 > 0 else 0
     
     diagnosis = "Tidak Teridentifikasi"
-    
-    # Logika Rogers (Sederhana)
-    if r2 < 0.1 and r1 > 0.1 and r1 < 1.0 and r5 < 1.0:
-        diagnosis = "Normal"
-    elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0:
-        diagnosis = "Partial Discharge (Corona)"
-    elif r2 > 0.1 and r2 < 3.0 and r1 > 0.1 and r1 < 1.0 and r5 > 3.0:
-        diagnosis = "Overheating > 700°C"
-    elif r2 < 0.1 and r1 > 1.0 and r5 > 1.0 and r5 < 3.0:
-        diagnosis = "Overheating 300-700°C"
-    elif r2 > 0.1 and r2 < 3.0 and r1 > 1.0 and r5 > 3.0:
-        diagnosis = "Arcing (Discharge Energi Tinggi)"
+    if r2 < 0.1 and r1 > 0.1 and r1 < 1.0 and r5 < 1.0: diagnosis = "Normal"
+    elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0: diagnosis = "Partial Discharge (Corona)"
+    elif r2 > 0.1 and r2 < 3.0 and r1 > 0.1 and r1 < 1.0 and r5 > 3.0: diagnosis = "Overheating > 700°C"
+    elif r2 < 0.1 and r1 > 1.0 and r5 > 1.0 and r5 < 3.0: diagnosis = "Overheating 300-700°C"
+    elif r2 > 0.1 and r2 < 3.0 and r1 > 1.0 and r5 > 3.0: diagnosis = "Arcing (Discharge Energi Tinggi)"
         
     return diagnosis, r1, r2, r5
 
-# D. KEY GAS METHOD (DIPERBAIKI UNTUK PYLANCE)
 def analisis_key_gas(data: TrafoInput):
-    # Definisikan tipe dictionary agar Pylance tidak bingung
     gases = {
-        "Thermal Oil (C2H4)": float(data.c2h4),
-        "Thermal Cell (CO)": float(data.co),
+        "Overheating Minyak (C2H4)": float(data.c2h4),
+        "Overheating Kertas (CO)": float(data.co),
         "Corona (H2)": float(data.h2),
         "Arcing (C2H2)": float(data.c2h2)
     }
-    
-    # Menggunakan lambda untuk key agar lebih eksplisit dan aman
     dominant_gas = max(gases, key=lambda k: gases[k])
-    
-    if gases[dominant_gas] == 0: return "Gas Kosong"
+    if gases[dominant_gas] == 0: return "Tidak Ada Gas Dominan"
     return f"Dominan {dominant_gas}"
 
 # ==========================================
 # 6. ENDPOINTS
 # ==========================================
 
-@app.on_event("startup")
-def startup():
-    print("VOLTY AI READY: Rogers Ratio (Table Mode) & Key Gas Loaded ✅")
-
 @app.post("/chat")
 def chat_with_volty(data: ChatInput):
-    # Cek langsung ke variable groq_client, bukan groq_active
-    if not groq_client: return {"reply": "AI Offline."}
+    if not groq_client: return {"reply": "Maaf, koneksi AI sedang offline."}
+    
+    # [UPDATE POIN 2] Menggabungkan pesan user dengan context data (jika ada)
+    system_msg = "Anda adalah Volty, asisten teknis PLN. Jawab singkat, padat, dan teknis."
+    user_msg = data.message
+    
+    if data.context:
+        # Jika frontend mengirim data trafo, selipkan ke dalam prompt sebagai background info
+        system_msg += f"\n\nKONTEKS DATA TRAFO SAAT INI (Gunakan ini untuk menjawab pertanyaan user):\n{data.context}"
+        
     try:
         chat = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": data.message}],
-            model="llama-3.3-70b-versatile"
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_msg}
+            ],
+            model="llama-3.3-70b-versatile",
+            max_tokens=400
         )
         return {"reply": chat.choices[0].message.content}
-    except: return {"reply": "Error AI Connection."}
+    except Exception as e:
+        return {"reply": f"Error AI: {str(e)}"}
 
 @app.post("/predict")
 def predict(data: TrafoInput):
-    # 1. Jalankan Semua Metode Analisis
+    # 1. Jalankan Analisis Lengkap (Termasuk Duval & CO2/CO)
     tdcg = hitung_tdcg(data)
     ieee_status, ieee_note = analisis_ieee_2019(data)
     rogers_res, val_r1, val_r2, val_r5 = analisis_rogers_ratio(data)
     key_gas_res = analisis_key_gas(data)
+    duval_res, pct_ch4, pct_c2h4, pct_c2h2 = analisis_duval_triangle_1(data)
+    paper_status, paper_ratio = analisis_ratio_co2_co(data)
     
-    # 2. Prediksi ML
+    # 2. Prediksi Machine Learning
     ml_res = "Unknown"
     if model_trafo:
-        try: ml_res = model_trafo.predict([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])[0]
+        try: 
+            ml_res = model_trafo.predict([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])[0]
         except: pass
 
-    # 3. Analisis AI
-    volty_chat = "AI Loading..."
-    # Cek groq_client agar Pylance tahu ini tidak None
+    # 3. Analisis AI (Groq)
+    volty_chat = "AI sedang menganalisis..."
     if groq_client:
-        prompt = f"""
-        Data DGA: H2={data.h2}, CH4={data.ch4}, C2H2={data.c2h2}, C2H4={data.c2h4}, C2H6={data.c2h6}, CO={data.co}.
-        Hasil Analisis Teknis:
-        1. IEEE 2019: {ieee_status} ({ieee_note})
-        2. Rogers Ratio: {rogers_res} (R1={val_r1}, R2={val_r2}, R5={val_r5})
-        3. Key Gas: {key_gas_res}
-        4. TDCG: {tdcg} ppm
+        system_prompt = """
+        You are a Senior High Voltage Transformer Specialist.
+        RULES:
+        1. IF Acetylene (C2H2) > 5 ppm, DIAGNOSE "ARCING" AS MAIN THREAT.
+        2. IF TDCG > 720, Status is CRITICAL.
+        3. Response in Indonesian. Use Markdown.
         
-        Sebagai Ahli Trafo, berikan kesimpulan diagnosa naratif singkat dan saran tindakan.
+        OUTPUT FORMAT:
+        **Diagnosis Utama**: [Fault & Status]
+        **Analisis Gas**: [Logic summary]
+        **Rekomendasi Aksi**: [3-4 actionable bullets]
         """
+        
+        user_prompt = f"""
+        Data DGA: H2={data.h2}, CH4={data.ch4}, C2H2={data.c2h2}, C2H4={data.c2h4}, C2H6={data.c2h6}, CO={data.co}, CO2={data.co2}.
+        
+        Hasil Teknis:
+        - IEEE Status: {ieee_status} ({ieee_note})
+        - Duval Triangle: {duval_res} (CH4:{pct_ch4}%, C2H4:{pct_c2h4}%, C2H2:{pct_c2h2}%)
+        - Rogers: {rogers_res}
+        - Isolasi Kertas: {paper_status} (Ratio: {paper_ratio})
+        """
+        
         try:
             chat = groq_client.chat.completions.create(
-                messages=[{"role": "system", "content": "Kamu adalah Volty, Ahli Trafo PLN."}, 
-                         {"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile", max_tokens=250
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                model="llama-3.3-70b-versatile",
+                max_tokens=600,
+                temperature=0.2
             )
             volty_chat = chat.choices[0].message.content
-        except: pass
+        except Exception as e:
+            volty_chat = f"Gagal memuat analisis AI: {str(e)}"
 
-    # 4. Simpan ke Supabase
+    # 4. Simpan ke Database
     if db_active and supabase:
         try:
-            record = data.dict()
+            record = data.model_dump() 
             record.update({
                 "tdcg": tdcg,
                 "status_ieee": ieee_status,
-                "diagnosa": f"Rogers: {rogers_res} | KeyGas: {key_gas_res}",
+                "diagnosa": f"Duval: {duval_res} | Rogers: {rogers_res}",
                 "hasil_ai": volty_chat
             })
             supabase.table("riwayat_uji").insert(record).execute()
-        except Exception as e: print(f"DB Error: {e}")
+        except Exception as e:
+            print(f"DB Error: {e}")
 
-    # 5. Response
+    # 5. Return Response Lengkap
     return {
         "status": "Sukses",
         "tdcg_value": tdcg,
         "ieee_status": ieee_status,
         "rogers_diagnosis": rogers_res,
-        "rogers_data": {
-            "r1": val_r1,
-            "r2": val_r2,
-            "r5": val_r5
-        },
+        "rogers_data": {"r1": val_r1, "r2": val_r2, "r5": val_r5},
+        "duval_diagnosis": duval_res,
+        "duval_data": {"ch4": pct_ch4, "c2h4": pct_c2h4, "c2h2": pct_c2h2},
+        "paper_health": {"status": paper_status, "ratio": paper_ratio},
         "key_gas": key_gas_res,
         "ai_prediction": ml_res,
         "volty_chat": volty_chat
@@ -239,11 +310,15 @@ def predict(data: TrafoInput):
 @app.get("/history")
 def get_history():
     if not db_active or not supabase: return []
-    try: return supabase.table("riwayat_uji").select("*").order("id", desc=True).execute().data
+    try: 
+        return supabase.table("riwayat_uji").select("*").order("id", desc=True).limit(50).execute().data
     except: return []
 
 @app.delete("/history/{item_id}")
 def delete_history(item_id: int):
     if db_active and supabase: 
-        supabase.table("riwayat_uji").delete().eq("id", item_id).execute()
-    return {"msg": "Deleted"}
+        try:
+            supabase.table("riwayat_uji").delete().eq("id", item_id).execute()
+            return {"msg": "Data deleted"}
+        except: return {"msg": "Error deleting"}
+    return {"msg": "DB not active"}

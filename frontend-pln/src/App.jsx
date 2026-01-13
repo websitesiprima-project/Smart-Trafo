@@ -1,3 +1,5 @@
+"use client"; // WAJIB: Karena kita pakai useState/useEffect
+
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
@@ -5,32 +7,33 @@ import {
   BookOpen,
   Zap,
   ArrowLeft,
-  FileText, // Import Icon baru untuk menu Input
+  FileText,
+  TrendingUp,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
-import { Toaster, toast } from "sonner";
+import { Toaster, toast } from "sonner"; // Pastikan sudah: bun add sonner
 
+// Gunakan ./ karena folder components ada di sebelah App.jsx
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
 
-// --- IMPORT HALAMAN ---
-import DashboardPage from "./components/DashboardPage"; // Dashboard Baru (Peta & Grafik)
-import InputFormPage from "./components/InputFormPage"; // Form Lama (Dipindahkan)
+import DashboardPage from "./components/DashboardPage";
+import InputFormPage from "./components/InputFormPage";
+import TrendingPage from "./components/TrendingPage";
 import HistoryPage from "./components/HistoryPage";
 import GuidePage from "./components/GuidePage";
 import LandingPage from "./components/LandingPage";
 
-function App() {
+export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activePage, setActivePage] = useState("landing");
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [activeField, setActiveField] = useState(null);
 
-  // --- STATE FORMULIR (DIGUNAKAN UNTUK HALAMAN INPUT) ---
+  // State Form
   const [formData, setFormData] = useState({
-    // Header Data
     no_dokumen: "-",
     merk_trafo: "",
     serial_number: "",
@@ -39,11 +42,10 @@ function App() {
     tahun_pembuatan: "",
     lokasi_gi: "",
     nama_trafo: "",
-    // Sampling Data
+    jenis_minyak: "",
     tanggal_sampling: new Date().toISOString().split("T")[0],
     suhu_sampel: 0,
     diambil_oleh: "",
-    // Gas Data
     h2: 0,
     ch4: 0,
     c2h2: 0,
@@ -54,11 +56,14 @@ function App() {
   });
 
   const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false); // State loading untuk tombol submit
+  const [loading, setLoading] = useState(false);
 
-  // --- STATE HISTORY ---
+  // State History (Live Data)
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // URL Backend (Sesuaikan jika perlu)
+  const API_URL = "http://127.0.0.1:8000";
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -71,7 +76,28 @@ function App() {
     setFormData({ ...formData, [name]: val });
   };
 
-  // --- FUNGSI API (SUBMIT FORM) ---
+  // --- FUNGSI FETCH HISTORY ---
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const response = await fetch(`${API_URL}/history`);
+      if (!response.ok) throw new Error("Gagal ambil data");
+      const data = await response.json();
+      setHistoryData(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error fetching history:", error);
+      toast.error("Gagal mengambil data riwayat");
+      setHistoryData([]);
+    }
+    setLoadingHistory(false);
+  };
+
+  // Ambil data saat aplikasi dibuka pertama kali
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  // --- FUNGSI SUBMIT ---
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
 
@@ -81,20 +107,26 @@ function App() {
     }
 
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 800)); // Simulasi
+    // Simulasi loading UX
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/predict", {
+      const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
+
+      if (!response.ok) throw new Error("Gagal memproses data");
+
       const data = await response.json();
-
       setResult(data);
-      toast.success("Analisis Selesai!");
+      toast.success("Analisis Selesai! Data tersimpan.");
 
-      // Scroll ke hasil
+      // Refresh data live
+      fetchHistory();
+
+      // Scroll ke bawah
       setTimeout(() => {
         window.scrollTo({
           top: document.body.scrollHeight,
@@ -103,29 +135,11 @@ function App() {
       }, 100);
     } catch (error) {
       console.error(error);
-      toast.error("Gagal terhubung ke Server!");
+      toast.error("Gagal terhubung ke Server AI!");
     }
     setLoading(false);
   };
 
-  // --- FUNGSI API (HISTORY) ---
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const response = await fetch("http://127.0.0.1:8000/history");
-      const data = await response.json();
-      setHistoryData(data);
-    } catch (error) {
-      toast.error("Gagal ambil history");
-    }
-    setLoadingHistory(false);
-  };
-
-  useEffect(() => {
-    if (activePage === "history") fetchHistory();
-  }, [activePage]);
-
-  // --- RENDER LANDING PAGE ---
   if (activePage === "landing") {
     return (
       <LandingPage
@@ -136,7 +150,6 @@ function App() {
     );
   }
 
-  // --- RENDER MAIN APP ---
   return (
     <div
       className={`flex min-h-screen font-sans transition-colors duration-500 ${
@@ -153,7 +166,6 @@ function App() {
         onClose={() => setActiveField(null)}
       />
 
-      {/* --- SIDEBAR NAVIGATION --- */}
       <aside
         className={`fixed h-full border-r flex flex-col z-20 shadow-2xl transition-colors duration-500 ${
           isDarkMode
@@ -163,7 +175,6 @@ function App() {
         style={{ width: `${sidebarWidth}px` }}
       >
         <div className="p-6 flex flex-col h-full">
-          {/* Logo Area */}
           <div className="flex items-center gap-3 mb-8 pb-6 border-b border-gray-200/20">
             <div className="w-10 h-10 bg-[#FFD700] rounded-lg flex items-center justify-center shadow-lg">
               <Zap className="text-[#1B7A8F]" size={24} />
@@ -182,9 +193,7 @@ function App() {
             </div>
           </div>
 
-          {/* Menu Items */}
           <nav className="space-y-2 flex-1">
-            {/* 1. DASHBOARD EKSEKUTIF (BARU) */}
             <button
               onClick={() => setActivePage("dashboard")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -195,8 +204,6 @@ function App() {
             >
               <LayoutDashboard size={20} /> Dashboard Aset
             </button>
-
-            {/* 2. INPUT FORM (LAMA) */}
             <button
               onClick={() => setActivePage("input_dga")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -207,7 +214,16 @@ function App() {
             >
               <FileText size={20} /> Input Uji DGA
             </button>
-
+            <button
+              onClick={() => setActivePage("trending")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                activePage === "trending"
+                  ? "bg-[#1B7A8F] text-white shadow-lg"
+                  : "hover:bg-gray-100/10"
+              }`}
+            >
+              <TrendingUp size={20} /> Analisis Trending
+            </button>
             <button
               onClick={() => setActivePage("history")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -218,7 +234,6 @@ function App() {
             >
               <History size={20} /> Riwayat
             </button>
-
             <button
               onClick={() => setActivePage("guide")}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
@@ -231,7 +246,6 @@ function App() {
             </button>
           </nav>
 
-          {/* Footer Actions */}
           <div className="mt-auto pt-6 border-t border-gray-200/20 space-y-3">
             <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
             <button
@@ -244,30 +258,34 @@ function App() {
         </div>
       </aside>
 
-      {/* --- MAIN CONTENT AREA --- */}
       <main
         className="flex-1 p-4 lg:p-8 transition-all duration-300"
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
         <AnimatePresence mode="wait">
-          {/* HALAMAN 1: DASHBOARD EKSEKUTIF (PETA & GRAFIK) */}
           {activePage === "dashboard" && (
             <PageTransition key="dashboard">
-              <DashboardPage isDarkMode={isDarkMode} />
+              <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
             </PageTransition>
           )}
 
-          {/* HALAMAN 2: FORM INPUT DGA (FORM LAMA) */}
           {activePage === "input_dga" && (
             <PageTransition key="input_dga">
               <InputFormPage
                 formData={formData}
+                setFormData={setFormData}
                 handleChange={handleChange}
                 handleSubmit={handleSubmit}
                 result={result}
                 isDarkMode={isDarkMode}
                 isLoading={loading}
               />
+            </PageTransition>
+          )}
+
+          {activePage === "trending" && (
+            <PageTransition key="trending">
+              <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
             </PageTransition>
           )}
 
@@ -292,5 +310,3 @@ function App() {
     </div>
   );
 }
-
-export default App;
