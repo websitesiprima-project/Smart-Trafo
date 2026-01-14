@@ -150,7 +150,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
                 <p className="text-xs font-bold opacity-60 uppercase">
                   Diagnosis Cepat
                 </p>{" "}
-                <p className="text-lg font-bold">&lt; 2 Detik</p>{" "}
+                <p className="text-lg font-bold">&lt; 10 Detik</p>{" "}
               </div>
             </div>
             <div

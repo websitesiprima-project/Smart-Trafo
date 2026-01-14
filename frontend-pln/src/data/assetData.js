@@ -902,7 +902,7 @@ export const ultgData = {
   lopana: {
     name: "ULTG Lopana",
     center: "GI Lopana",
-    stats: { gi: 8, td: 25 },
+    stats: { gi: 9, td: 26 },
     gis: [
       { name: "GI AMURANG", lat: 1.178765, lng: 124.476569 },
       { name: "GI LOPANA", lat: 1.21957, lng: 124.604005 },
@@ -912,6 +912,7 @@ export const ultgData = {
       { name: "GI TOMOHON", lat: 1.313473, lng: 124.852141 },
       { name: "GI TASIKRIA", lat: 1.419814, lng: 124.714655 },
       { name: "GI TONSEALAMA", lat: 1.327098, lng: 124.924109 },
+      { name: "GI SAWANGAN", lat: 1.38725, lng: 124.959582 },
     ],
   },
   kotamobagu: {
