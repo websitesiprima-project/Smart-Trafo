@@ -1,6 +1,6 @@
-"use client"; // WAJIB: Karena kita pakai useState/useEffect
+"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   LayoutDashboard,
   History,
@@ -11,20 +11,24 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
-import { Toaster, toast } from "sonner"; // Pastikan sudah: bun add sonner
+import { Toaster, toast } from "sonner";
 
-// Gunakan ./ karena folder components ada di sebelah App.jsx
+// --- KOMPONEN RINGAN (EAGER LOAD) ---
+// Komponen kecil/penting tetap di-load biasa agar UI kerangka cepat muncul
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
 
-import DashboardPage from "./components/DashboardPage";
-import InputFormPage from "./components/InputFormPage";
-import TrendingPage from "./components/TrendingPage";
-import HistoryPage from "./components/HistoryPage";
-import GuidePage from "./components/GuidePage";
-import LandingPage from "./components/LandingPage";
+// --- KOMPONEN BERAT (LAZY LOAD) ---
+// Ini adalah kunci perbaikan performa LCP.
+// Halaman berat (peta, grafik) hanya akan didownload saat user mengkliknya.
+const DashboardPage = lazy(() => import("./components/DashboardPage"));
+const InputFormPage = lazy(() => import("./components/InputFormPage"));
+const TrendingPage = lazy(() => import("./components/TrendingPage"));
+const HistoryPage = lazy(() => import("./components/HistoryPage"));
+const GuidePage = lazy(() => import("./components/GuidePage"));
+const LandingPage = lazy(() => import("./components/LandingPage"));
 
 export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -62,7 +66,6 @@ export default function Home() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // URL Backend (Sesuaikan jika perlu)
   const API_URL = "http://127.0.0.1:8000";
 
   const toggleTheme = () => {
@@ -76,7 +79,6 @@ export default function Home() {
     setFormData({ ...formData, [name]: val });
   };
 
-  // --- FUNGSI FETCH HISTORY ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -92,12 +94,10 @@ export default function Home() {
     setLoadingHistory(false);
   };
 
-  // Ambil data saat aplikasi dibuka pertama kali
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  // --- FUNGSI SUBMIT ---
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
 
@@ -107,7 +107,6 @@ export default function Home() {
     }
 
     setLoading(true);
-    // Simulasi loading UX
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     try {
@@ -123,10 +122,8 @@ export default function Home() {
       setResult(data);
       toast.success("Analisis Selesai! Data tersimpan.");
 
-      // Refresh data live
       fetchHistory();
 
-      // Scroll ke bawah
       setTimeout(() => {
         window.scrollTo({
           top: document.body.scrollHeight,
@@ -140,13 +137,16 @@ export default function Home() {
     setLoading(false);
   };
 
+  // Render Landing Page (dibungkus Suspense)
   if (activePage === "landing") {
     return (
-      <LandingPage
-        onStart={() => setActivePage("dashboard")}
-        onGuide={() => setActivePage("guide")}
-        isDarkMode={isDarkMode}
-      />
+      <Suspense fallback={<LoadingScreen />}>
+        <LandingPage
+          onStart={() => setActivePage("dashboard")}
+          onGuide={() => setActivePage("guide")}
+          isDarkMode={isDarkMode}
+        />
+      </Suspense>
     );
   }
 
@@ -262,50 +262,53 @@ export default function Home() {
         className="flex-1 p-4 lg:p-8 transition-all duration-300"
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
-        <AnimatePresence mode="wait">
-          {activePage === "dashboard" && (
-            <PageTransition key="dashboard">
-              <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
-            </PageTransition>
-          )}
+        {/* Suspense: Menangani loading saat halaman didownload di background */}
+        <Suspense fallback={<LoadingScreen />}>
+          <AnimatePresence mode="wait">
+            {activePage === "dashboard" && (
+              <PageTransition key="dashboard">
+                <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
+              </PageTransition>
+            )}
 
-          {activePage === "input_dga" && (
-            <PageTransition key="input_dga">
-              <InputFormPage
-                formData={formData}
-                setFormData={setFormData}
-                handleChange={handleChange}
-                handleSubmit={handleSubmit}
-                result={result}
-                isDarkMode={isDarkMode}
-                isLoading={loading}
-              />
-            </PageTransition>
-          )}
+            {activePage === "input_dga" && (
+              <PageTransition key="input_dga">
+                <InputFormPage
+                  formData={formData}
+                  setFormData={setFormData}
+                  handleChange={handleChange}
+                  handleSubmit={handleSubmit}
+                  result={result}
+                  isDarkMode={isDarkMode}
+                  isLoading={loading}
+                />
+              </PageTransition>
+            )}
 
-          {activePage === "trending" && (
-            <PageTransition key="trending">
-              <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
-            </PageTransition>
-          )}
+            {activePage === "trending" && (
+              <PageTransition key="trending">
+                <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
+              </PageTransition>
+            )}
 
-          {activePage === "history" && (
-            <PageTransition key="history">
-              <HistoryPage
-                historyData={historyData}
-                isDarkMode={isDarkMode}
-                fetchHistory={fetchHistory}
-                loadingHistory={loadingHistory}
-              />
-            </PageTransition>
-          )}
+            {activePage === "history" && (
+              <PageTransition key="history">
+                <HistoryPage
+                  historyData={historyData}
+                  isDarkMode={isDarkMode}
+                  fetchHistory={fetchHistory}
+                  loadingHistory={loadingHistory}
+                />
+              </PageTransition>
+            )}
 
-          {activePage === "guide" && (
-            <PageTransition key="guide">
-              <GuidePage isDarkMode={isDarkMode} />
-            </PageTransition>
-          )}
-        </AnimatePresence>
+            {activePage === "guide" && (
+              <PageTransition key="guide">
+                <GuidePage isDarkMode={isDarkMode} />
+              </PageTransition>
+            )}
+          </AnimatePresence>
+        </Suspense>
       </main>
     </div>
   );

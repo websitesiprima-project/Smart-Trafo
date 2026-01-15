@@ -11,9 +11,10 @@ import {
 } from "recharts";
 
 const TrendChart = ({ data, isDarkMode }) => {
+  // Validasi Data
   if (!data || data.length === 0)
     return (
-      <div className="h-64 flex items-center justify-center opacity-50 text-sm border rounded-xl">
+      <div className="h-64 flex items-center justify-center opacity-50 text-sm border rounded-xl bg-gray-50 dark:bg-slate-800 dark:border-slate-700">
         Pilih ID Trafo di tabel untuk melihat tren grafik.
       </div>
     );
@@ -34,6 +35,8 @@ const TrendChart = ({ data, isDarkMode }) => {
       <h3 className="text-sm font-bold uppercase mb-4 text-[#1B7A8F] tracking-widest">
         📈 Tren Kenaikan Gas (Gassing Rate)
       </h3>
+
+      {/* PENYELESAIAN ERROR HEIGHT: Class h-[300px] sudah benar disini */}
       <div className="h-[300px] w-full text-xs">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={sortedData}>
@@ -41,23 +44,29 @@ const TrendChart = ({ data, isDarkMode }) => {
             <XAxis
               dataKey="tanggal"
               stroke={isDarkMode ? "#94a3b8" : "#64748b"}
-              tickFormatter={(t) => t.split(" ")[0]} // Ambil tanggal saja
+              tickFormatter={(t) => t.split(" ")[0]}
             />
             <YAxis stroke={isDarkMode ? "#94a3b8" : "#64748b"} />
             <Tooltip
               contentStyle={{
                 backgroundColor: isDarkMode ? "#0f172a" : "#fff",
                 borderRadius: "8px",
+                border: isDarkMode ? "1px solid #334155" : "1px solid #e2e8f0",
               }}
             />
             <Legend />
-            {/* Garis-garis Gas */}
+
+            {/* PENYELESAIAN ERROR RX <ellipse>:
+                Tambahkan prop isAnimationActive={false} pada setiap Line.
+                Ini mencegah Recharts mencoba menganimasikan dot sebelum ukurannya siap.
+            */}
             <Line
               type="monotone"
               dataKey="h2"
               stroke="#3b82f6"
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false} // <-- ANTI ERROR RX
               name="H2"
             />
             <Line
@@ -66,6 +75,7 @@ const TrendChart = ({ data, isDarkMode }) => {
               stroke="#10b981"
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false} // <-- ANTI ERROR RX
               name="CH4"
             />
             <Line
@@ -74,6 +84,7 @@ const TrendChart = ({ data, isDarkMode }) => {
               stroke="#ef4444"
               strokeWidth={2}
               dot={{ r: 4 }}
+              isAnimationActive={false} // <-- ANTI ERROR RX
               name="C2H2 (Bahaya)"
             />
             <Line
@@ -82,6 +93,7 @@ const TrendChart = ({ data, isDarkMode }) => {
               stroke="#eab308"
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false} // <-- ANTI ERROR RX
               name="CO"
             />
           </LineChart>

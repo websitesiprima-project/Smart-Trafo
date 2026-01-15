@@ -12,7 +12,7 @@ import {
   Loader2,
   Filter,
 } from "lucide-react";
-import ExcelImporter from "./ExcelImporter";
+// Import ExcelImporter dihapus
 import { toast } from "sonner";
 
 const HistoryPage = ({
@@ -189,8 +189,7 @@ const HistoryPage = ({
         </div>
       </div>
 
-      {/* IMPORT EXCEL (FITUR BARU) */}
-      <ExcelImporter onImportSuccess={fetchHistory} />
+      {/* Bagian ExcelImporter dihapus disini */}
 
       {/* TABLE */}
       <div
