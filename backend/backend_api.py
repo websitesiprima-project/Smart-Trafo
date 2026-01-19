@@ -29,8 +29,9 @@ app.add_middleware(
 
 # 3. KONEKSI CLIENTS
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-VITE_SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
-VITE_SUPABASE_KEY = os.getenv("VITE_SUPABASE_KEY")
+# Cek keduanya untuk backward compatibility
+VITE_SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
+VITE_SUPABASE_KEY = os.getenv("VITE_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
 # Init Groq
 groq_client = None

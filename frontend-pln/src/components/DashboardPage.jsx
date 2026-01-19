@@ -182,7 +182,31 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
       <style>{`
         .leaflet-popup { z-index: 2000; } 
         .leaflet-popup-content-wrapper { border-radius: 12px; overflow: hidden; padding: 0; }
-        .leaflet-popup-content { margin: 0; width: 340px !important; }
+        .leaflet-popup-content { margin: 0; width: 340px !important; max-height: 500px; overflow-y: auto; }
+        .leaflet-popup-content-wrapper { max-width: 340px !important; }
+        
+        /* STYLING TOMBOL CLOSE (X) */
+        .leaflet-popup-close-button {
+          color: #8f1b1b !important;
+          font-size: 24px !important;
+          font-weight: bold !important;
+          width: 30px !important;
+          height: 30px !important;
+          line-height: 30px !important;
+          right: 8px !important;
+          top: 8px !important;
+          background: rgba(255, 255, 255, 0.9) !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          transition: all 0.2s ease !important;
+        }
+        
+        .leaflet-popup-close-button:hover {
+          background: #1B7A8F !important;
+          color: white !important;
+        }
       `}</style>
 
       {/* HEADER STATS */}
@@ -266,7 +290,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                   position={[gi.lat, gi.lng]}
                   icon={createCustomIcon(status)}
                 >
-                  <Popup>
+                  <Popup maxWidth={340} minWidth={320} keepInView={true}>
                     <div className="font-sans text-gray-800">
                       <div
                         className={`p-4 text-white ${

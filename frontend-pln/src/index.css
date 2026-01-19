@@ -38,3 +38,17 @@ body {
     border: none !important;
   }
 }
+
+/* --- ANIMASI PROGRESS BAR UNTUK LOGIN --- */
+@keyframes progress-bar {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-progress-bar {
+  animation: progress-bar 1.5s ease-in-out infinite;
+}

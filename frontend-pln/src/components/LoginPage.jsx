@@ -22,17 +22,37 @@ const LoginPage = ({ onLoginSuccess }) => {
       if (error) throw error;
 
       toast.success("Login Berhasil! Selamat datang.");
+      
+      // Delay untuk smooth transition ke dashboard
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
       // Callback ke App.jsx untuk mengubah state
       if (onLoginSuccess) onLoginSuccess(data.session);
     } catch (error) {
       toast.error("Login Gagal: " + error.message);
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-4">
+    <>
+      {/* Custom Loading Overlay untuk Login */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/95 backdrop-blur-md">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-[#FFD700] rounded-2xl flex items-center justify-center shadow-2xl mb-6 mx-auto animate-pulse">
+              <Zap className="text-[#1B7A8F]" size={48} />
+            </div>
+            <h3 className="text-2xl font-bold text-white mb-2">Mengautentikasi...</h3>
+            <p className="text-slate-400">Memuat dashboard Anda</p>
+            <div className="w-64 h-2 bg-slate-700 rounded-full mt-6 overflow-hidden mx-auto">
+              <div className="h-full bg-[#FFD700] animate-progress-bar"></div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-4">
       <div className="bg-[#1e293b] w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-700">
         {/* LOGO */}
         <div className="flex justify-center mb-8">
@@ -105,6 +125,7 @@ const LoginPage = ({ onLoginSuccess }) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

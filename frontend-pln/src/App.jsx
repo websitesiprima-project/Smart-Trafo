@@ -32,10 +32,21 @@ const HistoryPage = lazy(() => import("./components/HistoryPage"));
 const GuidePage = lazy(() => import("./components/GuidePage"));
 const LandingPage = lazy(() => import("./components/LandingPage"));
 
+// ============================================
+// 🔧 TOGGLE AUTENTIKASI
+// ============================================
+// Ubah menjadi 'false' untuk disable login (development mode)
+// Ubah menjadi 'true' untuk enable login dengan Supabase
+const ENABLE_AUTH = false;
+// ============================================
+
 export default function Home() {
   // --- STATE OTENTIKASI ---
-  const [session, setSession] = useState(null);
-  const [authChecking, setAuthChecking] = useState(true);
+  // Jika auth disabled, langsung set mock session dan skip checking
+  const [session, setSession] = useState(
+    !ENABLE_AUTH ? { user: { email: "dev@pln.co.id", id: "dev-mode" }, access_token: "dev-token" } : null
+  );
+  const [authChecking, setAuthChecking] = useState(ENABLE_AUTH); // Hanya check jika auth enabled
 
   // State untuk navigasi Public (Landing <-> Login)
   const [showLogin, setShowLogin] = useState(false);
@@ -78,9 +89,38 @@ export default function Home() {
 
   // --- EFFECT: CEK STATUS LOGIN SUPABASE ---
   useEffect(() => {
+    // Jika autentikasi di-disable, langsung bypass dengan mock session
+    if (!ENABLE_AUTH) {
+      const mockSession = {
+        user: { email: "dev@pln.co.id", id: "dev-mode" },
+        access_token: "dev-token"
+      };
+      setSession(mockSession);
+      setAuthChecking(false);
+      console.log("🔓 Auth disabled - Running in development mode");
+      return () => {};
+    }
+
+    // Jika auth enabled, cek apakah Supabase dikonfigurasi dengan benar
+    const hasValidConfig = import.meta.env.VITE_SUPABASE_URL && 
+                          import.meta.env.VITE_SUPABASE_KEY &&
+                          import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
+    
+    if (!hasValidConfig) {
+      console.warn("Supabase not configured properly");
+      setAuthChecking(false);
+      setSession(null);
+      return () => {};
+    }
+
+    // Jika ada konfigurasi valid, coba auth normal
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setAuthChecking(false);
+    }).catch((error) => {
+      console.error("Supabase auth error:", error);
+      setAuthChecking(false);
+      setSession(null);
     });
 
     const {
@@ -178,9 +218,15 @@ export default function Home() {
   // LOGIKA RENDER (GATEKEEPER)
   // ==========================================
 
-  // 1. Loading saat cek sesi
-  if (authChecking) {
-    return <LoadingScreen />;
+  // 1. Loading saat cek sesi (hanya jika auth enabled)
+  if (ENABLE_AUTH && authChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
+        <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+          <Zap className="text-[#1B7A8F]" size={32} />
+        </div>
+      </div>
+    );
   }
 
   // 2. JIKA BELUM LOGIN (PUBLIC AREA)
@@ -202,7 +248,13 @@ export default function Home() {
     } else {
       // Tampilkan LANDING PAGE
       return (
-        <Suspense fallback={<LoadingScreen />}>
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
+            <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+              <Zap className="text-[#1B7A8F]" size={32} />
+            </div>
+          </div>
+        }>
           <LandingPage
             onStart={() => setShowLogin(true)} // Arahkan ke Login
             onGuide={() => setShowLogin(true)}
@@ -335,7 +387,13 @@ export default function Home() {
         className="flex-1 p-4 lg:p-8 transition-all duration-300"
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
-        <Suspense fallback={<LoadingScreen />}>
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
+              <Zap className="text-[#1B7A8F]" size={32} />
+            </div>
+          </div>
+        }>
           <AnimatePresence mode="wait">
             {activePage === "dashboard" && (
               <PageTransition key="dashboard">
