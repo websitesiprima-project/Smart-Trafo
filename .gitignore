@@ -1,6 +1,6 @@
 # --- KEAMANAN (WAJIB ADA) ---
 .env
-
+.env.local
 # --- FRONTEND (REACT) ---
 node_modules/
 dist/

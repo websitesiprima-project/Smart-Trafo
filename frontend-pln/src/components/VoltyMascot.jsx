@@ -26,9 +26,11 @@ const VoltyMascot = ({ mood = "happy", isSpeaking = false }) => {
     ),
     explaining: (
       <>
-        {/* Mata membesar karena antusias menjelaskan */}
-        <motion.ellipse cx="35" cy="45" rx="6" ry="7" fill="#1e293b" />
-        <motion.ellipse cx="65" cy="45" rx="6" ry="7" fill="#1e293b" />
+        {/* --- PERBAIKAN DI SINI --- */}
+        {/* Gunakan <ellipse> biasa, JANGAN <motion.ellipse> */}
+        <ellipse cx="35" cy="45" rx="6" ry="7" fill="#1e293b" />
+        <ellipse cx="65" cy="45" rx="6" ry="7" fill="#1e293b" />
+
         {/* Alis terangkat */}
         <path
           d="M 25 38 Q 35 30 45 38"
@@ -101,6 +103,7 @@ const VoltyMascot = ({ mood = "happy", isSpeaking = false }) => {
         {mood === "explaining" ? eyes.explaining : eyes.happy}
 
         {/* Mulut (Bergerak jika bicara) */}
+        {/* Ini tetap pakai motion karena ada animasi animate={{ ry... }} */}
         {isSpeaking ? (
           <motion.ellipse
             cx="50"
@@ -144,6 +147,7 @@ const VoltyMascot = ({ mood = "happy", isSpeaking = false }) => {
       </motion.g>
 
       {/* Efek Bayangan di Bawah (Mengecil membesar saat terbang) */}
+      {/* Ini tetap pakai motion karena ada animasi */}
       <motion.ellipse
         cx="50"
         cy="90"

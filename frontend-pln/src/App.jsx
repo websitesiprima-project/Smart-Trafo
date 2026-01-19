@@ -1,38 +1,52 @@
-"use client"; // WAJIB: Karena kita pakai useState/useEffect
+"use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   LayoutDashboard,
   History,
   BookOpen,
   Zap,
-  ArrowLeft,
+  LogOut,
   FileText,
   TrendingUp,
+  ArrowLeft, // Penting untuk tombol kembali dari login
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
-import { Toaster, toast } from "sonner"; // Pastikan sudah: bun add sonner
+import { Toaster, toast } from "sonner";
 
-// Gunakan ./ karena folder components ada di sebelah App.jsx
+// --- IMPORT SUPABASE & LOGIN ---
+import { supabase } from "./lib/supabaseClient";
+import LoginPage from "./components/LoginPage";
+
+// --- KOMPONEN RINGAN ---
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
 
-import DashboardPage from "./components/DashboardPage";
-import InputFormPage from "./components/InputFormPage";
-import TrendingPage from "./components/TrendingPage";
-import HistoryPage from "./components/HistoryPage";
-import GuidePage from "./components/GuidePage";
-import LandingPage from "./components/LandingPage";
+// --- KOMPONEN BERAT (LAZY LOAD) ---
+const DashboardPage = lazy(() => import("./components/DashboardPage"));
+const InputFormPage = lazy(() => import("./components/InputFormPage"));
+const TrendingPage = lazy(() => import("./components/TrendingPage"));
+const HistoryPage = lazy(() => import("./components/HistoryPage"));
+const GuidePage = lazy(() => import("./components/GuidePage"));
+const LandingPage = lazy(() => import("./components/LandingPage"));
 
 export default function Home() {
+  // --- STATE OTENTIKASI ---
+  const [session, setSession] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // State untuk navigasi Public (Landing <-> Login)
+  const [showLogin, setShowLogin] = useState(false);
+
+  // --- STATE LAMA ---
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activePage, setActivePage] = useState("landing");
+  const [activePage, setActivePage] = useState("dashboard"); // Default dashboard saat login
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [activeField, setActiveField] = useState(null);
 
-  // State Form
+  // State Form & Data
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -57,13 +71,39 @@ export default function Home() {
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-
-  // State History (Live Data)
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // URL Backend (Sesuaikan jika perlu)
   const API_URL = "http://127.0.0.1:8000";
+
+  // --- EFFECT: CEK STATUS LOGIN SUPABASE ---
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthChecking(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthChecking(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // --- FUNGSI LOGOUT ---
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setSession(null);
+      setShowLogin(false); // Reset ke landing page setelah logout
+      toast.success("Berhasil keluar akun.");
+    } catch (error) {
+      toast.error("Gagal logout.");
+    }
+  };
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -76,7 +116,6 @@ export default function Home() {
     setFormData({ ...formData, [name]: val });
   };
 
-  // --- FUNGSI FETCH HISTORY ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -86,28 +125,26 @@ export default function Home() {
       setHistoryData(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error fetching history:", error);
-      toast.error("Gagal mengambil data riwayat");
       setHistoryData([]);
     }
     setLoadingHistory(false);
   };
 
-  // Ambil data saat aplikasi dibuka pertama kali
+  // Fetch data hanya jika user sudah login
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    if (session) {
+      fetchHistory();
+    }
+  }, [session]);
 
-  // --- FUNGSI SUBMIT ---
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-
     if (!formData.lokasi_gi || !formData.nama_trafo) {
       toast.error("Lokasi GI dan Nama Trafo wajib diisi!");
       return;
     }
 
     setLoading(true);
-    // Simulasi loading UX
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     try {
@@ -122,11 +159,8 @@ export default function Home() {
       const data = await response.json();
       setResult(data);
       toast.success("Analisis Selesai! Data tersimpan.");
-
-      // Refresh data live
       fetchHistory();
 
-      // Scroll ke bawah
       setTimeout(() => {
         window.scrollTo({
           top: document.body.scrollHeight,
@@ -140,16 +174,46 @@ export default function Home() {
     setLoading(false);
   };
 
-  if (activePage === "landing") {
-    return (
-      <LandingPage
-        onStart={() => setActivePage("dashboard")}
-        onGuide={() => setActivePage("guide")}
-        isDarkMode={isDarkMode}
-      />
-    );
+  // ==========================================
+  // LOGIKA RENDER (GATEKEEPER)
+  // ==========================================
+
+  // 1. Loading saat cek sesi
+  if (authChecking) {
+    return <LoadingScreen />;
   }
 
+  // 2. JIKA BELUM LOGIN (PUBLIC AREA)
+  if (!session) {
+    if (showLogin) {
+      // Tampilkan LOGIN PAGE + Tombol Kembali
+      return (
+        <>
+          <Toaster position="top-center" richColors />
+          <button
+            onClick={() => setShowLogin(false)}
+            className="fixed top-4 left-4 z-50 text-white/70 hover:text-white flex items-center gap-2 text-sm font-bold bg-black/30 hover:bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm transition-all"
+          >
+            <ArrowLeft size={16} /> Kembali ke Beranda
+          </button>
+          <LoginPage onLoginSuccess={(sess) => setSession(sess)} />
+        </>
+      );
+    } else {
+      // Tampilkan LANDING PAGE
+      return (
+        <Suspense fallback={<LoadingScreen />}>
+          <LandingPage
+            onStart={() => setShowLogin(true)} // Arahkan ke Login
+            onGuide={() => setShowLogin(true)}
+            isDarkMode={isDarkMode}
+          />
+        </Suspense>
+      );
+    }
+  }
+
+  // 3. JIKA SUDAH LOGIN (PROTECTED DASHBOARD)
   return (
     <div
       className={`flex min-h-screen font-sans transition-colors duration-500 ${
@@ -175,6 +239,7 @@ export default function Home() {
         style={{ width: `${sidebarWidth}px` }}
       >
         <div className="p-6 flex flex-col h-full">
+          {/* HEADER SIDEBAR */}
           <div className="flex items-center gap-3 mb-8 pb-6 border-b border-gray-200/20">
             <div className="w-10 h-10 bg-[#FFD700] rounded-lg flex items-center justify-center shadow-lg">
               <Zap className="text-[#1B7A8F]" size={24} />
@@ -246,14 +311,22 @@ export default function Home() {
             </button>
           </nav>
 
+          {/* FOOTER SIDEBAR (THEME & LOGOUT) */}
           <div className="mt-auto pt-6 border-t border-gray-200/20 space-y-3">
             <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+
+            {/* TOMBOL LOGOUT */}
             <button
-              onClick={() => setActivePage("landing")}
-              className="flex items-center gap-2 text-xs font-bold opacity-50 hover:opacity-100 transition-opacity"
+              onClick={handleLogout}
+              className="flex items-center gap-2 text-xs font-bold text-red-500 opacity-80 hover:opacity-100 transition-opacity w-full hover:bg-red-500/10 p-2 rounded-lg"
             >
-              <ArrowLeft size={14} /> Keluar Aplikasi
+              <LogOut size={14} /> Keluar Akun
             </button>
+
+            {/* Info User */}
+            <div className="text-[10px] text-center opacity-40">
+              Login sebagai: {session.user.email}
+            </div>
           </div>
         </div>
       </aside>
@@ -262,50 +335,52 @@ export default function Home() {
         className="flex-1 p-4 lg:p-8 transition-all duration-300"
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
-        <AnimatePresence mode="wait">
-          {activePage === "dashboard" && (
-            <PageTransition key="dashboard">
-              <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
-            </PageTransition>
-          )}
+        <Suspense fallback={<LoadingScreen />}>
+          <AnimatePresence mode="wait">
+            {activePage === "dashboard" && (
+              <PageTransition key="dashboard">
+                <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
+              </PageTransition>
+            )}
 
-          {activePage === "input_dga" && (
-            <PageTransition key="input_dga">
-              <InputFormPage
-                formData={formData}
-                setFormData={setFormData}
-                handleChange={handleChange}
-                handleSubmit={handleSubmit}
-                result={result}
-                isDarkMode={isDarkMode}
-                isLoading={loading}
-              />
-            </PageTransition>
-          )}
+            {activePage === "input_dga" && (
+              <PageTransition key="input_dga">
+                <InputFormPage
+                  formData={formData}
+                  setFormData={setFormData}
+                  handleChange={handleChange}
+                  handleSubmit={handleSubmit}
+                  result={result}
+                  isDarkMode={isDarkMode}
+                  isLoading={loading}
+                />
+              </PageTransition>
+            )}
 
-          {activePage === "trending" && (
-            <PageTransition key="trending">
-              <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
-            </PageTransition>
-          )}
+            {activePage === "trending" && (
+              <PageTransition key="trending">
+                <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
+              </PageTransition>
+            )}
 
-          {activePage === "history" && (
-            <PageTransition key="history">
-              <HistoryPage
-                historyData={historyData}
-                isDarkMode={isDarkMode}
-                fetchHistory={fetchHistory}
-                loadingHistory={loadingHistory}
-              />
-            </PageTransition>
-          )}
+            {activePage === "history" && (
+              <PageTransition key="history">
+                <HistoryPage
+                  historyData={historyData}
+                  isDarkMode={isDarkMode}
+                  fetchHistory={fetchHistory}
+                  loadingHistory={loadingHistory}
+                />
+              </PageTransition>
+            )}
 
-          {activePage === "guide" && (
-            <PageTransition key="guide">
-              <GuidePage isDarkMode={isDarkMode} />
-            </PageTransition>
-          )}
-        </AnimatePresence>
+            {activePage === "guide" && (
+              <PageTransition key="guide">
+                <GuidePage isDarkMode={isDarkMode} />
+              </PageTransition>
+            )}
+          </AnimatePresence>
+        </Suspense>
       </main>
     </div>
   );

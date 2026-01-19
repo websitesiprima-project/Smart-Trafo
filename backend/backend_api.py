@@ -29,8 +29,8 @@ app.add_middleware(
 
 # 3. KONEKSI CLIENTS
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+VITE_SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+VITE_SUPABASE_KEY = os.getenv("VITE_SUPABASE_KEY")
 
 # Init Groq
 groq_client = None
@@ -44,9 +44,9 @@ if GROQ_API_KEY:
 # Init Supabase
 supabase = None
 db_active = False
-if SUPABASE_URL and SUPABASE_KEY:
+if VITE_SUPABASE_URL and VITE_SUPABASE_KEY:
     try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        supabase = create_client(VITE_SUPABASE_URL, VITE_SUPABASE_KEY)
         db_active = True
         print("✅ Supabase Connected")
     except Exception as e:
