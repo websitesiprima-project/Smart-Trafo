@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import VoltyMascot from "./VoltyMascot";
-import { X, Send, MessageCircle } from "lucide-react"; // Tambah Icon Send & Message
+import { X, Send, MessageCircle } from "lucide-react";
+import VoltyMascot from "./VoltyMascot"; // Pastikan file di atas sudah dibuat
 
-// DATABASE PENGETAHUAN LOKAL (TETAP DIPAKAI UNTUK RESPON CEPAT)
+// DATABASE PENGETAHUAN LOKAL
 const knowledgeBase = {
   id_trafo: {
     title: "Identitas Trafo",
@@ -45,40 +45,10 @@ const knowledgeBase = {
     text: "Penuaan kertas atau oksidasi normal.",
     color: "border-indigo-500",
   },
-  analyze: {
-    title: "Mulai Analisis",
-    text: "Siap bos! Volty akan menghitung standar IEEE, Duval, dan AI.",
-    color: "border-cyan-500",
-  },
   theme: {
     title: "Ganti Tema",
     text: "Sesuaikan cahaya layar agar nyaman di mata!",
     color: "border-slate-500",
-  },
-  download: {
-    title: "Download Laporan",
-    text: "Menyusun data ke CSV/PDF untuk laporanmu.",
-    color: "border-green-600",
-  },
-  refresh: {
-    title: "Segarkan Data",
-    text: "Mengambil data terbaru dari Database.",
-    color: "border-blue-400",
-  },
-  menu_dashboard: {
-    title: "Dashboard",
-    text: "Kembali ke pusat input data.",
-    color: "border-purple-500",
-  },
-  menu_history: {
-    title: "Riwayat",
-    text: "Arsip data masa lalu.",
-    color: "border-orange-500",
-  },
-  menu_guide: {
-    title: "Panduan",
-    text: "Kamus teknis standar PLN & IEEE.",
-    color: "border-yellow-400",
   },
 };
 
@@ -99,7 +69,7 @@ const VoltyAssistant = ({ activeField, onClose }) => {
     }
   }, [activeField]);
 
-  // FUNGSI KIRIM CHAT KE GEMINI (BACKEND)
+  // FUNGSI KIRIM CHAT KE GEMINI/LLAMA (BACKEND)
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -110,15 +80,18 @@ const VoltyAssistant = ({ activeField, onClose }) => {
     setChatResponse("Sedang memproses..."); // Placeholder
 
     try {
+      // Pastikan Backend Python Jalan di Port 8000
       const res = await fetch("http://127.0.0.1:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg }),
       });
       const data = await res.json();
-      setChatResponse(data.reply); // Tampilkan jawaban Gemini
+      setChatResponse(data.reply); // Tampilkan jawaban AI
     } catch (error) {
-      setChatResponse("Maaf, koneksi ke otak saya terputus. 😢");
+      setChatResponse(
+        "Maaf, koneksi ke otak saya terputus (Backend Offline). 😢"
+      );
     }
     setIsTyping(false);
   };
@@ -151,13 +124,13 @@ const VoltyAssistant = ({ activeField, onClose }) => {
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setMode("chat")}
-            className="fixed bottom-8 right-8 bg-[#1B7A8F] text-white p-4 rounded-full shadow-2xl z-40 hover:bg-[#156b7d] transition-colors flex items-center justify-center"
+            className="fixed bottom-8 right-8 bg-[#1B7A8F] text-white p-4 rounded-full shadow-2xl z-40 hover:bg-[#156b7d] transition-colors flex items-center justify-center border-4 border-white"
           >
             <MessageCircle size={28} />
             {/* Badge Notifikasi Kecil */}
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
             </span>
           </motion.button>
         )}
@@ -166,19 +139,19 @@ const VoltyAssistant = ({ activeField, onClose }) => {
         {mode !== "hidden" && (
           <motion.div
             key="volty-container"
-            className="fixed bottom-8 right-8 z-50 flex items-end gap-4 max-w-sm"
+            className="fixed bottom-8 right-8 z-50 flex items-end gap-4 max-w-sm pointer-events-none" // pointer-events-none agar tidak menghalangi klik di belakang area kosong
             initial={{ scale: 0, y: 100 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0, y: 100, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
           >
-            {/* BUBBLE PERCAKAPAN */}
+            {/* BUBBLE PERCAKAPAN (pointer-events-auto agar bisa diklik) */}
             <div
-              className={`relative bg-white p-4 rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 w-80 flex flex-col min-h-[150px]`}
+              className={`pointer-events-auto relative bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 dark:text-slate-200 w-80 flex flex-col min-h-[150px] transition-colors`}
             >
               {/* Header Bubble */}
-              <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-2">
-                <h4 className="font-bold text-xs uppercase tracking-wide flex items-center gap-2 text-slate-500">
+              <div className="flex justify-between items-start mb-2 border-b border-slate-100 dark:border-slate-700 pb-2">
+                <h4 className="font-bold text-xs uppercase tracking-wide flex items-center gap-2 text-slate-500 dark:text-slate-400">
                   💡 {title}
                 </h4>
                 <button
@@ -193,7 +166,7 @@ const VoltyAssistant = ({ activeField, onClose }) => {
               </div>
 
               {/* Isi Pesan (Scrollable) */}
-              <div className="text-sm leading-relaxed mb-4 overflow-y-auto max-h-40 pr-1 custom-scrollbar">
+              <div className="text-sm leading-relaxed mb-4 overflow-y-auto max-h-60 pr-1 custom-scrollbar">
                 {textContent}
               </div>
 
@@ -204,8 +177,8 @@ const VoltyAssistant = ({ activeField, onClose }) => {
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Tanya sesuatu..."
-                    className="w-full bg-slate-100 text-xs p-3 pr-10 rounded-lg outline-none focus:ring-1 focus:ring-[#1B7A8F] transition-all"
+                    placeholder="Tanya Volty..."
+                    className="w-full bg-slate-100 dark:bg-slate-900 text-xs p-3 pr-10 rounded-lg outline-none focus:ring-1 focus:ring-[#1B7A8F] transition-all text-slate-800 dark:text-white"
                   />
                   <button
                     type="submit"
@@ -216,17 +189,14 @@ const VoltyAssistant = ({ activeField, onClose }) => {
                   </button>
                 </form>
               )}
-
-              {/* Segitiga Bubble */}
-              <div className="absolute -right-2 bottom-6 w-4 h-4 bg-white transform rotate-45 border-r border-b border-gray-100"></div>
             </div>
 
-            {/* KARAKTER VOLTY */}
+            {/* KARAKTER VOLTY (pointer-events-auto agar bisa diklik) */}
             <motion.div
-              className="w-28 h-28 flex-shrink-0 cursor-pointer"
-              animate={{ y: [0, -8, 0] }}
-              transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-              onClick={() => setMode(mode === "chat" ? "hidden" : "chat")} // Klik Volty untuk toggle chat/tutup
+              className="w-24 h-24 flex-shrink-0 cursor-pointer pointer-events-auto"
+              animate={{ y: [0, -5, 0] }}
+              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              onClick={() => setMode(mode === "chat" ? "hidden" : "chat")}
               whileTap={{ scale: 0.9 }}
             >
               <VoltyMascot
