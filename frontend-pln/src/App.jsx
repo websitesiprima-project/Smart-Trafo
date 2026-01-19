@@ -10,6 +10,7 @@ import {
   FileText,
   TrendingUp,
   ArrowLeft, // Penting untuk tombol kembali dari login
+  Trash2,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
@@ -50,6 +51,12 @@ export default function Home() {
 
   // State untuk navigasi Public (Landing <-> Login)
   const [showLogin, setShowLogin] = useState(false);
+  
+  // State untuk konfirmasi logout
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  
+  // State untuk konfirmasi delete all history
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   // --- STATE LAMA ---
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -135,14 +142,55 @@ export default function Home() {
 
   // --- FUNGSI LOGOUT ---
   const handleLogout = async () => {
+    setShowLogoutModal(true); // Tampilkan modal konfirmasi
+  };
+
+  const confirmLogout = async () => {
     try {
       await supabase.auth.signOut();
       setSession(null);
       setShowLogin(false); // Reset ke landing page setelah logout
+      setShowLogoutModal(false);
       toast.success("Berhasil keluar akun.");
     } catch (error) {
       toast.error("Gagal logout.");
     }
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutModal(false);
+  };
+
+  // --- FUNGSI DELETE ALL HISTORY ---
+  const handleDeleteAllHistory = async () => {
+    setShowDeleteAllModal(true); // Tampilkan modal konfirmasi
+  };
+
+  const confirmDeleteAll = async () => {
+    try {
+      setLoadingHistory(true);
+      let count = 0;
+      for (const item of historyData) {
+        try {
+          await fetch(`${API_URL}/history/${item.id}`, {
+            method: "DELETE",
+            keepalive: true,
+          });
+          count++;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      toast.success(`Berhasil menghapus ${count} data.`);
+      fetchHistory();
+      setShowDeleteAllModal(false);
+    } catch (error) {
+      toast.error("Gagal menghapus data.");
+    }
+  };
+
+  const cancelDeleteAll = () => {
+    setShowDeleteAllModal(false);
   };
 
   const toggleTheme = () => {
@@ -276,6 +324,106 @@ export default function Home() {
     >
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
+
+      {/* Modal Konfirmasi Delete All History */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 ${
+            isDarkMode ? "bg-[#1e293b] border border-slate-700" : "bg-white"
+          }`}>
+            <div className="flex flex-col items-center text-center">
+              {/* Icon Warning */}
+              <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="text-orange-500" size={32} />
+              </div>
+              
+              {/* Title */}
+              <h3 className={`text-2xl font-bold mb-3 ${
+                isDarkMode ? "text-white" : "text-gray-900"
+              }`}>
+                Hapus Semua Data?
+              </h3>
+              
+              {/* Description */}
+              <p className={`mb-6 ${
+                isDarkMode ? "text-slate-400" : "text-gray-600"
+              }`}>
+                Apakah Anda yakin ingin menghapus <strong>{historyData.length} data</strong> dari riwayat? Tindakan ini tidak dapat dibatalkan.
+              </p>
+              
+              {/* Buttons */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={cancelDeleteAll}
+                  className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all ${
+                    isDarkMode 
+                      ? "bg-slate-700 hover:bg-slate-600 text-white" 
+                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={confirmDeleteAll}
+                  className="flex-1 px-6 py-3 rounded-lg font-semibold bg-orange-500 hover:bg-orange-600 text-white transition-all"
+                >
+                  Ya, Hapus Semua
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Logout */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 ${
+            isDarkMode ? "bg-[#1e293b] border border-slate-700" : "bg-white"
+          }`}>
+            <div className="flex flex-col items-center text-center">
+              {/* Icon Warning */}
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+                <LogOut className="text-red-500" size={32} />
+              </div>
+              
+              {/* Title */}
+              <h3 className={`text-2xl font-bold mb-3 ${
+                isDarkMode ? "text-white" : "text-gray-900"
+              }`}>
+                Keluar Akun?
+              </h3>
+              
+              {/* Description */}
+              <p className={`mb-6 ${
+                isDarkMode ? "text-slate-400" : "text-gray-600"
+              }`}>
+                Apakah Anda yakin ingin keluar dari akun ini?
+              </p>
+              
+              {/* Buttons */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={cancelLogout}
+                  className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all ${
+                    isDarkMode 
+                      ? "bg-slate-700 hover:bg-slate-600 text-white" 
+                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                  }`}
+                >
+                  Tidak
+                </button>
+                <button
+                  onClick={confirmLogout}
+                  className="flex-1 px-6 py-3 rounded-lg font-semibold bg-red-500 hover:bg-red-600 text-white transition-all"
+                >
+                  Ya, Keluar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <VoltyAssistant
         activeField={activeField}
@@ -428,6 +576,7 @@ export default function Home() {
                   isDarkMode={isDarkMode}
                   fetchHistory={fetchHistory}
                   loadingHistory={loadingHistory}
+                  onDeleteAll={handleDeleteAllHistory}
                 />
               </PageTransition>
             )}

@@ -12,20 +12,29 @@ import {
   Loader2,
   Filter,
   Download,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
-import { generatePDFFromTemplate } from "../utils/PDFGenerator";
+import { generatePDFFromTemplate, generatePDFBlob } from "../utils/PDFGenerator";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 
 const HistoryPage = ({
   historyData,
   isDarkMode,
   fetchHistory,
   loadingHistory,
+  onDeleteAll,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedYear, setSelectedYear] = useState("All");
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // State untuk mode seleksi batch
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   // --- 1. FILTER TAHUN & PENCARIAN ---
   const filteredData = useMemo(() => {
@@ -69,19 +78,111 @@ const HistoryPage = ({
 
   // --- 3. HAPUS SEMUA ---
   const handleClearAll = async () => {
-    if (historyData.length === 0) return toast.info("Data kosong.");
-    if (
-      window.prompt(
-        `Ketik "HAPUS" untuk menghapus ${historyData.length} data:`
-      ) !== "HAPUS"
-    )
+    if (historyData.length === 0) {
+      toast.info("Data kosong.");
       return;
+    }
+    onDeleteAll();
+  };
 
+  // --- 4. FUNGSI SELEKSI BATCH ---
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedIds([]); // Reset selection saat toggle
+  };
+
+  const toggleSelectItem = (id) => {
+    if (selectedIds.includes(id)) {
+      setSelectedIds(selectedIds.filter(itemId => itemId !== id));
+    } else {
+      setSelectedIds([...selectedIds, id]);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredData.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredData.map(item => item.id));
+    }
+  };
+
+  const handleBatchDownload = async () => {
+    if (selectedIds.length === 0) {
+      toast.warning("Pilih minimal 1 data untuk didownload.");
+      return;
+    }
+    
+    // Jika hanya 1 file, download langsung
+    if (selectedIds.length === 1) {
+      const item = historyData.find(d => d.id === selectedIds[0]);
+      if (item) {
+        try {
+          await generatePDFFromTemplate(item);
+          toast.success("PDF berhasil diunduh.");
+        } catch (error) {
+          toast.error("Gagal mengunduh PDF.");
+        }
+      }
+      setSelectedIds([]);
+      setSelectionMode(false);
+      return;
+    }
+    
+    // Jika lebih dari 1 file, buat ZIP
+    toast.info(`Membuat ZIP untuk ${selectedIds.length} file PDF...`);
+    
+    const zip = new JSZip();
+    let successCount = 0;
+    
+    for (const id of selectedIds) {
+      const item = historyData.find(d => d.id === id);
+      if (item) {
+        try {
+          // Generate PDF menggunakan template yang sama dengan download individual
+          const pdfBlob = await generatePDFBlob(item);
+          
+          // Add to ZIP with unique filename
+          const filename = `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}.pdf`
+            .replace(/[^a-z0-9_.-]/gi, '_');
+          zip.file(filename, pdfBlob);
+          
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to generate PDF for ID ${id}:`, error);
+        }
+      }
+    }
+    
+    // Generate ZIP dan download
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const timestamp = new Date().toISOString().split('T')[0];
+      saveAs(zipBlob, `DGA_Reports_${timestamp}.zip`);
+      toast.success(`Berhasil mengunduh ${successCount} file PDF dalam ZIP.`);
+    } catch (error) {
+      toast.error("Gagal membuat file ZIP.");
+      console.error(error);
+    }
+    
+    setSelectedIds([]);
+    setSelectionMode(false);
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) {
+      toast.warning("Pilih minimal 1 data untuk dihapus.");
+      return;
+    }
+    
+    if (!window.confirm(`Hapus ${selectedIds.length} data yang dipilih?`)) return;
+    
     setIsDeleting(true);
     let count = 0;
-    for (const item of historyData) {
+    
+    for (const id of selectedIds) {
       try {
-        await fetch(`http://127.0.0.1:8000/history/${item.id}`, {
+        await fetch(`http://127.0.0.1:8000/history/${id}`, {
           method: "DELETE",
           keepalive: true,
         });
@@ -90,8 +191,11 @@ const HistoryPage = ({
         console.error(e);
       }
     }
-    toast.success(`Dihapus: ${count} data.`);
+    
+    toast.success(`Berhasil menghapus ${count} data.`);
     fetchHistory();
+    setSelectedIds([]);
+    setSelectionMode(false);
     setIsDeleting(false);
   };
 
@@ -169,18 +273,55 @@ const HistoryPage = ({
           </div>
 
           {/* BUTTONS */}
-          <button
-            onClick={handleClearAll}
-            disabled={isDeleting || historyData.length === 0}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-          >
-            {isDeleting ? (
-              <Loader2 className="animate-spin" size={16} />
-            ) : (
-              <Trash2 size={16} />
-            )}
-            <span className="hidden md:inline">Hapus Semua</span>
-          </button>
+          {!selectionMode ? (
+            <>
+              <button
+                onClick={toggleSelectionMode}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
+              >
+                <CheckSquare size={16} />
+                <span className="hidden md:inline">Seleksi</span>
+              </button>
+              <button
+                onClick={handleClearAll}
+                disabled={isDeleting || historyData.length === 0}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
+              >
+                {isDeleting ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+                <span className="hidden md:inline">Hapus Semua</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={handleBatchDownload}
+                disabled={selectedIds.length === 0}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
+              >
+                <Download size={16} />
+                Download ({selectedIds.length})
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={selectedIds.length === 0 || isDeleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
+              >
+                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                Hapus ({selectedIds.length})
+              </button>
+              <button
+                onClick={toggleSelectionMode}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
+              >
+                <X size={16} />
+                Batal
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -196,23 +337,37 @@ const HistoryPage = ({
           <table className="w-full">
             <thead>
               <tr>
+                {selectionMode && (
+                  <th className={`text-center ${thClass}`} style={{width: "50px"}}>
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex items-center justify-center w-full"
+                    >
+                      {selectedIds.length === filteredData.length && filteredData.length > 0 ? (
+                        <CheckSquare size={18} className="text-blue-500" />
+                      ) : (
+                        <Square size={18} className="text-gray-400" />
+                      )}
+                    </button>
+                  </th>
+                )}
                 <th className={thClass}>Tanggal</th>
                 <th className={thClass}>Identitas</th>
                 <th className={thClass}>Status</th>
                 <th className={`text-center ${thClass}`}>TDCG</th>
-                <th className={`text-center ${thClass}`}>Aksi</th>
+                {!selectionMode && <th className={`text-center ${thClass}`}>Aksi</th>}
               </tr>
             </thead>
             <tbody>
               {loadingHistory ? (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-500">
+                  <td colSpan={selectionMode ? "6" : "5"} className="p-8 text-center text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-gray-500">
+                  <td colSpan={selectionMode ? "6" : "5"} className="p-8 text-center text-gray-500">
                     Data tidak ditemukan.
                   </td>
                 </tr>
@@ -220,10 +375,27 @@ const HistoryPage = ({
                 filteredData.map((item) => (
                   <tr
                     key={item.id}
-                    className={
+                    onClick={() => selectionMode && toggleSelectItem(item.id)}
+                    className={`${
                       isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"
-                    }
+                    } ${selectionMode && selectedIds.includes(item.id) ? (isDarkMode ? 'bg-blue-900/20' : 'bg-blue-50') : ''} ${
+                      selectionMode ? 'cursor-pointer' : ''
+                    }`}
                   >
+                    {selectionMode && (
+                      <td className={`text-center ${tdClass}`}>
+                        <button
+                          onClick={() => toggleSelectItem(item.id)}
+                          className="flex items-center justify-center w-full"
+                        >
+                          {selectedIds.includes(item.id) ? (
+                            <CheckSquare size={18} className="text-blue-500" />
+                          ) : (
+                            <Square size={18} className="text-gray-400" />
+                          )}
+                        </button>
+                      </td>
+                    )}
                     <td className={tdClass}>
                       <div className="flex items-center gap-2 font-bold text-sm">
                         <Calendar size={14} className="text-[#1B7A8F]" />{" "}
@@ -268,31 +440,33 @@ const HistoryPage = ({
                     >
                       {Math.round(item.tdcg)}
                     </td>
-                    <td className={`text-center ${tdClass}`}>
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => setSelectedItem(item)}
-                          className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100"
-                          title="Lihat Detail"
-                        >
-                          <Info size={16} />
-                        </button>
-                        <button
-                          onClick={() => generatePDFFromTemplate(item)}
-                          className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100"
-                          title="Cetak PDF"
-                        >
-                          <Download size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100"
-                          title="Hapus Data"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+                    {!selectionMode && (
+                      <td className={`text-center ${tdClass}`}>
+                        <div className="flex justify-center gap-2">
+                          <button
+                            onClick={() => setSelectedItem(item)}
+                            className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100"
+                            title="Lihat Detail"
+                          >
+                            <Info size={16} />
+                          </button>
+                          <button
+                            onClick={() => generatePDFFromTemplate(item)}
+                            className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100"
+                            title="Cetak PDF"
+                          >
+                            <Download size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100"
+                            title="Hapus Data"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

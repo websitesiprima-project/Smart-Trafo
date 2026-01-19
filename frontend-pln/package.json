@@ -12,9 +12,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",
     "clsx": "^2.1.1",
+    "file-saver": "^2.0.5",
     "framer-motion": "^12.26.2",
     "jspdf": "^3.0.4",
     "jspdf-autotable": "^5.0.7",
+    "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.556.0",
     "pdf-lib": "^1.17.1",
