@@ -161,8 +161,15 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
         >
           {/* KEMBALI MENGGUNAKAN MapContainer BIASA */}
           <MapContainer
-            center={[0.8, 124.0]}
+            center={[0.8, 129.0]}
             zoom={8}
+            maxBounds={[
+              [-1, 121.5], // Diperluas ke Barat (Gorontalo) & Selatan agar tidak terpotong saat zoom
+              [3.0, 125.7],  // Diperluas ke Utara (Pulau-pulau) & Timur
+            ]}
+            maxBoundsViscosity={1.0}
+            minZoom={8}
+            maxZoom={18}
             style={{ height: "100%", width: "100%" }}
           >
             {/* TileLayer DITAMBAHKAN KEMBALI */}

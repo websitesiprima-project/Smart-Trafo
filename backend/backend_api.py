@@ -322,7 +322,7 @@ def predict(data: TrafoInput):
 def get_history():
     if not db_active or not supabase: return []
     try: 
-        return supabase.table("riwayat_uji").select("*").order("id", desc=True).limit(50).execute().data
+        return supabase.table("riwayat_uji").select("*").order("id", desc=True).limit(1000).execute().data
     except: return []
 
 @app.delete("/history/{item_id}")

@@ -11,9 +11,10 @@ import {
   X,
   Loader2,
   Filter,
+  Download,
 } from "lucide-react";
-import ExcelImporter from "./ExcelImporter";
 import { toast } from "sonner";
+import { generatePDFFromTemplate } from "../utils/PDFGenerator";
 
 const HistoryPage = ({
   historyData,
@@ -180,17 +181,8 @@ const HistoryPage = ({
             )}
             <span className="hidden md:inline">Hapus Semua</span>
           </button>
-          <button
-            onClick={() => window.print()}
-            className="px-4 py-2 bg-gray-800 text-white rounded-lg font-bold text-sm flex items-center gap-2"
-          >
-            <FileText size={16} /> Cetak
-          </button>
         </div>
       </div>
-
-      {/* IMPORT EXCEL (FITUR BARU) */}
-      <ExcelImporter onImportSuccess={fetchHistory} />
 
       {/* TABLE */}
       <div
@@ -281,12 +273,21 @@ const HistoryPage = ({
                         <button
                           onClick={() => setSelectedItem(item)}
                           className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100"
+                          title="Lihat Detail"
                         >
                           <Info size={16} />
                         </button>
                         <button
+                          onClick={() => generatePDFFromTemplate(item)}
+                          className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100"
+                          title="Cetak PDF"
+                        >
+                          <Download size={16} />
+                        </button>
+                        <button
                           onClick={() => handleDelete(item.id)}
                           className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100"
+                          title="Hapus Data"
                         >
                           <Trash2 size={16} />
                         </button>

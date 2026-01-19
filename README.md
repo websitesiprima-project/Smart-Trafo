@@ -30,7 +30,7 @@
 
 <br />
 
-![PLN](https://img.shields.io/badge/Domain-PLN_(Persero)-1B7A8F?style=for-the-badge&logo=electricity&logoColor=white)
+![PLN](<https://img.shields.io/badge/Domain-PLN_(Persero)-1B7A8F?style=for-the-badge&logo=electricity&logoColor=white>)
 ![IEEE](https://img.shields.io/badge/Standard-IEEE_C57.104_2019-00629B?style=for-the-badge&logo=ieee&logoColor=white)
 ![Duval](https://img.shields.io/badge/Analysis-Duval_Pentagon-purple?style=for-the-badge&logo=google-analytics&logoColor=white)
 
@@ -40,42 +40,50 @@
 
 > **Sistem Monitoring Cerdas & Asisten Diagnosa DGA untuk PT. PLN (Persero) UPT Manado.**
 
-**Volty** adalah aplikasi *Fullstack AI* yang merevolusi cara engineer memonitor kesehatan Transformator. Menggabungkan analisis kimiawi standar internasional dengan kecerdasan buatan (**Generative AI**), Volty mampu mendeteksi gangguan trafo (Arcing, Overheating, Partial Discharge) secara *real-time* dan memberikan rekomendasi teknis layaknya seorang ahli.
+**Volty** adalah aplikasi _Fullstack AI_ yang merevolusi cara engineer memonitor kesehatan Transformator. Menggabungkan analisis kimiawi standar internasional dengan kecerdasan buatan (**Generative AI**), Volty mampu mendeteksi gangguan trafo (Arcing, Overheating, Partial Discharge) secara _real-time_ dan memberikan rekomendasi teknis layaknya seorang ahli.
 
 ---
 
 ## 📸 Antarmuka Aplikasi (App Showcase)
 
 ### 1. Dashboard Utama & Asisten AI
+
 Pusat kendali Volty. Menampilkan formulir input standar PLN, Visualisasi **Duval Pentagon**, dan **Chatbot Cerdas** yang memberikan narasi diagnosa.
 
 ![Dashboard Volty AI](https://github.com/user-attachments/assets/099d8be2-f1c2-45f6-8e79-88b7557f77ea)
 
 ### 2. Pengalaman Pengguna & Manajemen Data
-| **Halaman Selamat Datang (Welcome Screen)** | **Arsip Digital (History)** |
-|:-------------------------------------------:|:---------------------------:|
+
+|                            **Halaman Selamat Datang (Welcome Screen)**                             |                                     **Arsip Digital (History)**                                     |
+| :------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------------: |
 | ![Welcome Screen](https://github.com/user-attachments/assets/6f1e869f-d60f-4954-92d1-5dcb9d8080b1) | ![Arsip Pengajuan](https://github.com/user-attachments/assets/495f971d-1080-4ab1-a2c0-1e02169467dd) |
-| *Desain Modern & Interaktif dengan Mode Gelap* | *Penyimpanan Cloud Real-time dengan Fitur Export Excel* |
+|                           _Desain Modern & Interaktif dengan Mode Gelap_                           |                       _Penyimpanan Cloud Real-time dengan Fitur Export Excel_                       |
 
 ---
 
 ## 🧠 Fitur Unggulan (Core Features)
 
 ### 🤖 1. Generative AI Analysis (Volty Brain)
+
 Tidak hanya angka, Volty "berbicara". Menggunakan **Groq Llama-3**, Volty menganalisis 7 gas terlarut (H2, CH4, C2H6, C2H4, C2H2, CO, CO2) dan memberikan:
+
 - **Diagnosa Naratif:** Penjelasan bahasa manusia tentang kondisi trafo.
 - **Rekomendasi Aksi:** Saran teknis (misal: "Lakukan DGA Online" atau "Purifikasi Minyak").
 
 ### 📐 2. Visualisasi Duval Pentagon Interaktif
+
 Fitur visualisasi vektor SVG kustom yang memetakan titik gangguan ke dalam zona (D1, D2, T3, dll) secara presisi matematika.
 
 ### 🛡️ 3. Multi-Standard Compliance
+
 Aplikasi ini dibangun dengan referensi ketat terhadap standar dunia dan lokal:
+
 1.  **IEEE C57.104-2019** (90th Percentile Methodology)
 2.  **IEC 60599 & Duval Pentagon**
 3.  **SPLN T5.005:2010**
 
 ### ☁️ 4. Cloud & Security Enterprise
+
 - **Database:** Supabase (PostgreSQL) untuk integritas data tinggi.
 - **Auth:** Sistem Login Petugas aman.
 - **Reporting:** Cetak PDF resmi dengan Kop Surat PLN & Export CSV.
@@ -86,8 +94,8 @@ Aplikasi ini dibangun dengan referensi ketat terhadap standar dunia dan lokal:
 
 Volty juga berfungsi sebagai alat edukasi dengan referensi standar yang lengkap di dalam aplikasi:
 
-| **Standar IEEE** | **Metode IEC / Duval** | **Standar SPLN** |
-|:---:|:---:|:---:|
+|                                        **Standar IEEE**                                        |                                    **Metode IEC / Duval**                                     |                                        **Standar SPLN**                                        |
+| :--------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------: |
 | ![Guide IEEE](https://github.com/user-attachments/assets/ee180073-f239-4193-9d5d-c807c1552332) | ![Guide IEC](https://github.com/user-attachments/assets/f777d476-526b-4a57-a89f-726c14d312a5) | ![Guide SPLN](https://github.com/user-attachments/assets/b2877361-3143-4822-ab9f-7221ce1f9856) |
 
 ---
@@ -95,41 +103,53 @@ Volty juga berfungsi sebagai alat edukasi dengan referensi standar yang lengkap 
 ## 🛠️ Teknologi (Tech Stack)
 
 ### Frontend (Client)
-* ⚛️ **React.js (Vite)** - Super fast UI rendering.
-* 🎨 **Tailwind CSS** - Styling modern & responsive.
-* 📊 **Recharts & Lucide** - Visualisasi data & ikonografi.
+
+- ⚛️ **React.js (Vite)** - Super fast UI rendering.
+- 🎨 **Tailwind CSS** - Styling modern & responsive.
+- 📊 **Recharts & Lucide** - Visualisasi data & ikonografi.
 
 ### Backend (Server)
-* ⚡ **FastAPI (Python)** - High-performance backend.
-* 🧠 **Scikit-Learn** - Machine Learning Classification Model.
-* 🤖 **Groq SDK** - LLM Integration for Volty Chat.
-* 🔐 **Pydantic** - Data validation.
+
+- ⚡ **FastAPI (Python)** - High-performance backend.
+- 🧠 **Scikit-Learn** - Machine Learning Classification Model.
+- 🤖 **Groq SDK** - LLM Integration for Volty Chat.
+- 🔐 **Pydantic** - Data validation.
 
 ### Infrastructure
-* 🔥 **Supabase** - PostgreSQL Database, Auth, & Realtime.
-* ▲ **Vercel** - Deployment Platform (Frontend & Backend).
+
+- 🔥 **Supabase** - PostgreSQL Database, Auth, & Realtime.
+- ▲ **Vercel** - Deployment Platform (Frontend & Backend).
 
 ---
 
 ## ⚙️ Cara Menjalankan (Installation)
 
 1. Clone Repositori
-git clone [https://github.com/JeremiaPaduli2311/MAGANG.git](https://github.com/JeremiaPaduli2311/MAGANG.git)
-cd MAGANG
+   git clone [https://github.com/JeremiaPaduli2311/MAGANG.git](https://github.com/JeremiaPaduli2311/MAGANG.git)
+   cd MAGANG
 
 2. Setup Backend (Python)
-Masuk ke folder backend:
-cd backend
+   Masuk ke folder backend:
+   cd backend
+
 # Install dependencies
+
 pip install -r requirements.txt
+
 # Buat file .env berisi: GROQ_API_KEY, SUPABASE_URL, SUPABASE_KEY
+
 # Jalankan server
+
 uvicorn backend_api:app --reload
 
 3. Setup Frontend (React)
-Buka terminal baru, masuk ke folder frontend:
-cd frontend-pln
+   Buka terminal baru, masuk ke folder frontend:
+   cd frontend-pln
+
 # Install dependencies
+
 npm install
+
 # Jalankan frontend
+
 npm run dev
