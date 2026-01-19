@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, MessageCircle } from "lucide-react";
 import VoltyMascot from "./VoltyMascot"; // Pastikan file di atas sudah dibuat
@@ -55,10 +55,35 @@ const knowledgeBase = {
 const VoltyAssistant = ({ activeField, onClose }) => {
   const [mode, setMode] = useState("hidden"); // 'hidden', 'info', 'chat'
   const [chatInput, setChatInput] = useState("");
-  const [chatResponse, setChatResponse] = useState(
-    "Halo! Saya Volty. Ada yang bisa dibantu tentang Trafo?"
-  );
+  const [chatHistory, setChatHistory] = useState([]); // Riwayat chat {user: string, ai: string, timestamp: Date}
   const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef(null); // Ref untuk auto-scroll ke bawah
+
+  // Scroll ke pesan terbaru setiap kali chat history berubah
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatHistory, isTyping]);
+
+  // Load chat history dari localStorage saat komponen mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("volty_chat_history");
+    if (savedHistory) {
+      try {
+        setChatHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Error loading chat history:", e);
+      }
+    }
+  }, []);
+
+  // Save chat history ke localStorage setiap kali berubah
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      localStorage.setItem("volty_chat_history", JSON.stringify(chatHistory));
+    }
+  }, [chatHistory]);
 
   // EFEK 1: JIKA PARENT MENGIRIM TRIGGER (activeField), MASUK MODE INFO
   useEffect(() => {
@@ -77,7 +102,6 @@ const VoltyAssistant = ({ activeField, onClose }) => {
     const userMsg = chatInput;
     setChatInput(""); // Kosongkan input
     setIsTyping(true); // Volty bicara (animasi mulut)
-    setChatResponse("Sedang memproses..."); // Placeholder
 
     try {
       // Pastikan Backend Python Jalan di Port 8000
@@ -87,11 +111,21 @@ const VoltyAssistant = ({ activeField, onClose }) => {
         body: JSON.stringify({ message: userMsg }),
       });
       const data = await res.json();
-      setChatResponse(data.reply); // Tampilkan jawaban AI
+      
+      // Tambahkan ke riwayat chat
+      const newChat = {
+        user: userMsg,
+        ai: data.reply,
+        timestamp: new Date().toISOString()
+      };
+      setChatHistory(prev => [...prev, newChat]);
     } catch (error) {
-      setChatResponse(
-        "Maaf, koneksi ke otak saya terputus (Backend Offline). 😢"
-      );
+      const errorChat = {
+        user: userMsg,
+        ai: "Maaf, koneksi ke otak saya terputus (Backend Offline). 😢",
+        timestamp: new Date().toISOString()
+      };
+      setChatHistory(prev => [...prev, errorChat]);
     }
     setIsTyping(false);
   };
@@ -107,7 +141,6 @@ const VoltyAssistant = ({ activeField, onClose }) => {
     borderColor = knowledgeBase[activeField].color;
   } else if (mode === "chat") {
     title = "Volty AI Chat";
-    textContent = chatResponse;
     borderColor = "border-violet-500";
   }
 
@@ -147,7 +180,7 @@ const VoltyAssistant = ({ activeField, onClose }) => {
           >
             {/* BUBBLE PERCAKAPAN (pointer-events-auto agar bisa diklik) */}
             <div
-              className={`pointer-events-auto relative bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 dark:text-slate-200 w-80 flex flex-col min-h-[150px] transition-colors`}
+              className={`pointer-events-auto relative bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 dark:text-slate-200 w-80 flex flex-col transition-colors ${mode === 'chat' ? 'h-[500px]' : 'min-h-[150px]'}`}
             >
               {/* Header Bubble */}
               <div className="flex justify-between items-start mb-2 border-b border-slate-100 dark:border-slate-700 pb-2">
@@ -166,9 +199,46 @@ const VoltyAssistant = ({ activeField, onClose }) => {
               </div>
 
               {/* Isi Pesan (Scrollable) */}
-              <div className="text-sm leading-relaxed mb-4 overflow-y-auto max-h-60 pr-1 custom-scrollbar">
-                {textContent}
-              </div>
+              {mode === "info" ? (
+                <div className="text-sm leading-relaxed mb-4 overflow-y-auto max-h-60 pr-1 custom-scrollbar">
+                  {textContent}
+                </div>
+              ) : (
+                /* CHAT HISTORY */
+                <div className="flex-1 overflow-y-auto mb-4 pr-1 custom-scrollbar space-y-3">
+                  {chatHistory.length === 0 ? (
+                    <div className="text-center text-sm opacity-60 mt-8">
+                      Halo! Saya Volty. Ada yang bisa dibantu tentang Trafo?
+                    </div>
+                  ) : (
+                    chatHistory.map((chat, idx) => (
+                      <div key={idx} className="space-y-2">
+                        {/* User Message */}
+                        <div className="flex justify-end">
+                          <div className="bg-[#1B7A8F] text-white text-xs p-2 rounded-lg rounded-tr-none max-w-[85%]">
+                            {chat.user}
+                          </div>
+                        </div>
+                        {/* AI Response */}
+                        <div className="flex justify-start">
+                          <div className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs p-2 rounded-lg rounded-tl-none max-w-[85%] whitespace-pre-wrap">
+                            {chat.ai}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {isTyping && (
+                    <div className="flex justify-start">
+                      <div className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs p-2 rounded-lg rounded-tl-none">
+                        <span className="animate-pulse">Volty sedang mengetik...</span>
+                      </div>
+                    </div>
+                  )}
+                  {/* Scroll anchor */}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
 
               {/* INPUT CHAT (Hanya muncul di Mode Chat) */}
               {mode === "chat" && (

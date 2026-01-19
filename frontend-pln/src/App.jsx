@@ -147,6 +147,9 @@ export default function Home() {
 
   const confirmLogout = async () => {
     try {
+      // Hapus riwayat chat Volty dari localStorage
+      localStorage.removeItem("volty_chat_history");
+      
       await supabase.auth.signOut();
       setSession(null);
       setShowLogin(false); // Reset ke landing page setelah logout
