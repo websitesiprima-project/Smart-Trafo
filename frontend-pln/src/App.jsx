@@ -37,7 +37,7 @@ const LandingPage = lazy(() => import("./components/LandingPage"));
 // ============================================
 // Ubah menjadi 'false' untuk disable login (development mode)
 // Ubah menjadi 'true' untuk enable login dengan Supabase
-const ENABLE_AUTH = false;
+const ENABLE_AUTH = true;
 // ============================================
 
 export default function Home() {
