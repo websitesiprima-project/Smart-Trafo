@@ -492,8 +492,10 @@ export const generatePDF = (data, result) => {
 };
 
 // Fungsi untuk generate PDF sebagai blob (untuk ZIP download)
+// Menggunakan template yang sama persis dengan generatePDFFromTemplate
 export const generatePDFBlob = (data) => {
   try {
+    console.log("Generating PDF Blob for:", data);
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
@@ -501,23 +503,34 @@ export const generatePDFBlob = (data) => {
     });
     
     const kondisiInfo = getKondisi(data.status_ieee, data);
-    let currentY = 10;
+    let currentY = 15;
     
-    // HEADER
+    // ============================================
+    // 1. HEADER - Standar IEEE
+    // ============================================
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
     doc.text("Standar: IEEE C57.104-2019", 14, currentY);
+    
     currentY += 10;
     
-    // IDENTITAS TRANSFORMATOR & DATA SAMPLING
+    // ============================================
+    // 2. IDENTITAS TRANSFORMATOR & DATA SAMPLING
+    // ============================================
+    
+    // Judul Identitas Transformator (Kiri)
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 139, 139);
+    doc.setTextColor(0, 139, 139); // Teal color
     doc.text("Identitas Transformator", 14, currentY);
+    
+    // Judul Data Sampling (Kanan)
     doc.text("Data Sampling", 120, currentY);
+    
     currentY += 6;
     
+    // Data Identitas Transformator (Kiri)
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
@@ -536,6 +549,7 @@ export const generatePDFBlob = (data) => {
       { label: "Petugas", value: data.diambil_oleh || "" },
     ];
     
+    // Gambar data kiri
     leftLabels.forEach((item, index) => {
       const y = currentY + (index * 5);
       doc.setTextColor(0, 139, 139);
@@ -545,6 +559,7 @@ export const generatePDFBlob = (data) => {
       doc.text(String(item.value), 60, y);
     });
     
+    // Gambar data kanan
     rightLabels.forEach((item, index) => {
       const y = currentY + (index * 5);
       doc.setTextColor(0, 139, 139);
@@ -652,7 +667,7 @@ export const generatePDFBlob = (data) => {
     
     // Duval Pentagon (Kanan)
     const pentagonCenterX = 150;
-    const pentagonCenterY = kondisiStartY + 11;
+    const pentagonCenterY = kondisiStartY + 22;
     const pentagonSize = 42;
     
     const gasData = {

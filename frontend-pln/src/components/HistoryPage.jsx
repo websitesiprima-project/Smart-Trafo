@@ -139,33 +139,90 @@ const HistoryPage = ({
 
     const zip = new JSZip();
     let successCount = 0;
+    let failedCount = 0;
+    const failedItems = [];
 
-    for (const id of selectedIds) {
+    for (let i = 0; i < selectedIds.length; i++) {
+      const id = selectedIds[i];
       const item = historyData.find((d) => d.id === id);
-      if (item) {
-        try {
-          const pdfBlob = await generatePDFBlob(item);
-          const filename =
-            `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}.pdf`.replace(
-              /[^a-z0-9_.-]/gi,
-              "_",
-            );
-          zip.file(filename, pdfBlob);
-          successCount++;
-        } catch (error) {
-          console.error(`Failed to generate PDF for ID ${id}:`, error);
-        }
+      
+      if (!item) {
+        console.error(`Data tidak ditemukan untuk ID ${id}`);
+        failedCount++;
+        failedItems.push(`ID ${id} (data tidak ditemukan)`);
+        continue;
       }
+      
+      try {
+        console.log(`[${i + 1}/${selectedIds.length}] Generating PDF for: ${item.nama_trafo} - ${item.tanggal_sampling}`);
+        
+        // Generate PDF dengan timeout
+        const pdfBlob = await Promise.race([
+          generatePDFBlob(item),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('PDF generation timeout')), 10000)
+          )
+        ]);
+        
+        if (!pdfBlob || pdfBlob.size === 0) {
+          console.error(`PDF blob is empty for ID ${id} - ${item.nama_trafo}`);
+          failedCount++;
+          failedItems.push(`${item.nama_trafo} (blob kosong)`);
+          continue;
+        }
+        
+        // Buat filename unik dengan menambahkan ID untuk menghindari duplicate
+        const baseFilename = `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}`.replace(
+          /[^a-z0-9_.-]/gi,
+          "_",
+        );
+        const filename = `${baseFilename}_ID${id}.pdf`;
+        
+        // Check jika filename sudah ada (safety check)
+        const filesInZip = Object.keys(zip.files);
+        if (filesInZip.includes(filename)) {
+          console.warn(`⚠ Filename collision detected: ${filename}. Adding timestamp.`);
+          const timestamp = Date.now();
+          const uniqueFilename = `${baseFilename}_ID${id}_${timestamp}.pdf`;
+          zip.file(uniqueFilename, pdfBlob);
+        } else {
+          zip.file(filename, pdfBlob);
+        }
+        
+        successCount++;
+        console.log(`✓ Successfully added PDF ${successCount}/${selectedIds.length}: ${filename} (${(pdfBlob.size / 1024).toFixed(2)} KB)`);
+        
+        // Tambahkan delay kecil untuk menghindari overload
+        if (i < selectedIds.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      } catch (error) {
+        console.error(`✗ Failed to generate PDF for ID ${id} - ${item.nama_trafo}:`, error);
+        failedCount++;
+        failedItems.push(`${item.nama_trafo} (${error.message})`);
+      }
+    }
+
+    console.log(`\nBatch download summary: ${successCount} success, ${failedCount} failed out of ${selectedIds.length} total`);
+    if (failedItems.length > 0) {
+      console.log('Failed items:', failedItems);
     }
 
     try {
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const timestamp = new Date().toISOString().split("T")[0];
       saveAs(zipBlob, `DGA_Reports_${timestamp}.zip`);
-      toast.success(`Berhasil mengunduh ${successCount} file PDF dalam ZIP.`);
+      
+      if (failedCount > 0) {
+        toast.warning(`Berhasil mengunduh ${successCount} file PDF. ${failedCount} file gagal.`, {
+          duration: 5000
+        });
+      } else {
+        toast.success(`Berhasil mengunduh ${successCount} file PDF dalam ZIP.`);
+      }
     } catch (error) {
       toast.error("Gagal membuat file ZIP.");
-      console.error(error);
+      console.error('ZIP generation error:', error);
     }
 
     setSelectedIds([]);
