@@ -364,7 +364,7 @@ const HistoryPage = ({
                 )}
                 <th className={thClass}>Tanggal</th>
                 <th className={thClass}>Identitas</th>
-                <th className={thClass}>Status</th>
+                <th className={thClass}>Status (IEEE C57.104-2019)</th>
                 <th className={`text-center ${thClass}`}>TDCG</th>
                 {!selectionMode && (
                   <th className={`text-center ${thClass}`}>Aksi</th>
@@ -441,27 +441,55 @@ const HistoryPage = ({
                       </div>
                     </td>
                     <td className={tdClass}>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
-                          item.status_ieee?.includes("Normal")
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {item.status_ieee?.includes("Normal") ? (
-                          <CheckCircle size={10} />
-                        ) : (
-                          <AlertTriangle size={10} />
-                        )}{" "}
-                        {item.status_ieee}
-                      </span>
+                      {(() => {
+                        let bg = "";
+                        let icon = null;
+                        // Cek status dengan lowercase agar lebih fleksibel
+                        const status = (item.status_ieee || "").toLowerCase();
+                        if (status.includes("kondisi 1") || status.includes("normal")) {
+                          bg = "bg-green-100 text-green-700";
+                          icon = <CheckCircle size={10} />;
+                        } else if (status.includes("kondisi 2") || status.includes("waspada")) {
+                          bg = "bg-orange-100 text-orange-700";
+                          icon = <AlertTriangle size={10} />;
+                        } else if (status.includes("kondisi 3") || status.includes("bahaya") || status.includes("kritis")) {
+                          bg = "bg-red-100 text-red-700";
+                          icon = <AlertTriangle size={10} />;
+                        }
+                        return (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${bg}`}>
+                            {icon} {item.status_ieee}
+                          </span>
+                        );
+                      })()}
                     </td>
-                    <td
-                      className={`text-center font-black text-lg ${tdClass} ${
-                        item.tdcg > 720 ? "text-red-500" : "text-[#1B7A8F]"
-                      }`}
-                    >
-                      {Math.round(item.tdcg)}
+                    <td className={`text-center font-bold ${tdClass}`}>
+                      {(() => {
+                        const status = (item.status_ieee || "").toLowerCase();
+                        let tdcgClass = "text-[#1B7A8F]";
+                        if (
+                          status.includes("kondisi 3") ||
+                          status.includes("bahaya") ||
+                          status.includes("kritis")
+                        ) {
+                          tdcgClass = "bg-red-100 text-red-500 rounded-lg px-2 py-1";
+                        } else if (
+                          status.includes("kondisi 2") ||
+                          status.includes("waspada")
+                        ) {
+                          tdcgClass = "bg-orange-100 text-orange-500 rounded-lg px-2 py-1";
+                        } else if (
+                          status.includes("kondisi 1") ||
+                          status.includes("normal")
+                        ) {
+                          tdcgClass = "bg-green-100 text-green-600 rounded-lg px-2 py-1";
+                        } else {
+                          // fallback: keep previous threshold logic
+                          tdcgClass = item.tdcg > 720 ? "text-red-500" : "text-[#1B7A8F]";
+                        }
+
+                        return <span className={tdcgClass}>{Math.round(item.tdcg)}</span>;
+                      })()}
                     </td>
                     {!selectionMode && (
                       <td className={`text-center ${tdClass}`}>
