@@ -13,6 +13,167 @@ const getKondisi = (status, data) => {
   return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
 };
 
+// Fungsi untuk menggambar Duval Pentagon dengan warna zona
+const drawDuvalPentagon = (doc, centerX, centerY, size, gasData) => {
+  const { h2, ch4, c2h6, c2h4, c2h2 } = gasData;
+  const total = h2 + ch4 + c2h6 + c2h4 + c2h2;
+  
+  if (total === 0) return;
+  
+  const rad = (deg) => (deg * Math.PI) / 180;
+  const scale = size / 90;
+  
+  const toX = (x) => centerX + x * scale;
+  const toY = (y) => centerY - y * scale;
+  
+  // Warna zona
+  const colors = {
+    PD: [200, 162, 240],
+    D1: [120, 180, 250],
+    D2: [250, 140, 140],
+    T3: [250, 170, 100],
+    T2: [250, 220, 80],
+    T1: [250, 235, 140],
+    S: [120, 230, 160]
+  };
+  
+  // Helper untuk menggambar polygon dengan outline
+  const drawZone = (points, color, strokeColor = [80, 80, 80], strokeWidth = 0.1) => {
+    if (points.length < 3) return;
+    
+    // Konversi semua points
+    const coords = points.map(p => [toX(p[0]), toY(p[1])]);
+    
+    // Set fill color
+    doc.setFillColor(color[0], color[1], color[2]);
+    
+    // Gambar polygon dengan triangulation
+    for (let i = 1; i < coords.length - 1; i++) {
+      doc.triangle(coords[0][0], coords[0][1], coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1], 'F');
+    }
+    
+    // Gambar outline untuk setiap zona agar terlihat jelas batasnya
+    doc.setDrawColor(strokeColor[0], strokeColor[1], strokeColor[2]);
+    doc.setLineWidth(strokeWidth);
+    for (let i = 0; i < coords.length; i++) {
+      const next = (i + 1) % coords.length;
+      doc.line(coords[i][0], coords[i][1], coords[next][0], coords[next][1]);
+    }
+  };
+  
+  // Gambar zona TANPA overlap - setiap zona terpisah dengan jelas
+  
+  // T2 - Kuning (segitiga bawah tengah)
+  drawZone([
+    [-6, -4], [1, -32.4], [-22.5, -32.4]
+  ], colors.T2, [70, 70, 70], 0.15);
+  
+  // T3 - Orange (bawah kanan)
+  drawZone([
+    [0, -3], [24.3, -30], [23.5, -32.4], [1, -32.4], [-6, -4]
+  ], colors.T3, [70, 70, 70], 0.15);
+  
+  // T1 - Kuning muda (kiri besar) - DIPERBAIKI tanpa overlap dengan T2/T3
+  drawZone([
+    [-35, 3.1], [-23.5, -32.4], [-22.5, -32.4], [-6, -4], [0, -3], [0, 1.5]
+  ], colors.T1, [70, 70, 70], 0.15);
+  
+  // D2 - Merah (kanan tengah ke bawah)
+  drawZone([
+    [4, 16], [32, -6.1], [24.3, -30], [0, -3], [0, 1.5]
+  ], colors.D2, [70, 70, 70], 0.15);
+  
+  // D1 - Biru (kanan atas ke tengah) - tanpa overlap dengan S
+  drawZone([
+    [1, 24.5], [1, 33], [0, 40], [38, 12], [32, -6.1], [4, 16], [0, 1.5]
+  ], colors.D1, [70, 70, 70], 0.15);
+  
+  // S - Hijau (kiri atas ke atas) - tanpa overlap dengan D1
+  drawZone([
+    [0, 1.5], [-35, 3.1], [-38, 12.4], [0, 40], [0, 33], [-1, 33], [-1, 24.5], [0, 24.5]
+  ], colors.S, [70, 70, 70], 0.15);
+  
+  // PD - Ungu (kotak kecil di tengah atas) - paling depan
+  drawZone([
+    [-1, 24.5], [-1, 33], [1, 33], [1, 24.5]
+  ], colors.PD, [60, 60, 60], 0.2);
+  
+  // Gambar outline pentagon (5 sudut)
+  doc.setDrawColor(60, 60, 60);
+  doc.setLineWidth(0.4);
+  const pentagonPoints = [
+    { x: 0, y: 40 },      // H2 (atas)
+    { x: 38, y: 12 },     // C2H2 (kanan atas)
+    { x: 24, y: -32 },    // C2H4 (kanan bawah)
+    { x: -24, y: -32 },   // CH4 (kiri bawah)
+    { x: -38, y: 12 }     // C2H6 (kiri atas)
+  ];
+  for (let i = 0; i < 5; i++) {
+    const next = (i + 1) % 5;
+    doc.line(toX(pentagonPoints[i].x), toY(pentagonPoints[i].y), 
+             toX(pentagonPoints[next].x), toY(pentagonPoints[next].y));
+  }
+  
+  // Gambar garis dari pusat ke setiap sudut
+  doc.setDrawColor(100, 100, 100);
+  doc.setLineWidth(0.2);
+  pentagonPoints.forEach(p => {
+    doc.line(centerX, centerY, toX(p.x), toY(p.y));
+  });
+  
+  // Label gas di setiap sudut
+  doc.setFontSize(6);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.text("H2", toX(0) - 3, toY(40) - 2);
+  doc.text("C2H2", toX(38) + 1, toY(12) + 1);
+  doc.text("C2H4", toX(24) + 1, toY(-32) + 4);
+  doc.text("CH4", toX(-24) - 9, toY(-32) + 4);
+  doc.text("C2H6", toX(-38) - 11, toY(12) + 1);
+  
+  // Label zona di dalam pentagon
+  doc.setFontSize(5);
+  doc.setTextColor(50, 50, 50);
+  doc.text("PD", toX(2), toY(28));
+  doc.text("S", toX(-18), toY(18));
+  doc.text("D1", toX(15), toY(15));
+  doc.text("D2", toX(12), toY(-8));
+  doc.text("T3", toX(5), toY(-22));
+  doc.text("T2", toX(-10), toY(-22));
+  doc.text("T1", toX(-18), toY(-8));
+  
+  // Hitung posisi titik diagnosis (sama seperti di React component)
+  const pH2 = (h2 / total) * 100;
+  const pC2H6 = (c2h6 / total) * 100;
+  const pCH4 = (ch4 / total) * 100;
+  const pC2H4 = (c2h4 / total) * 100;
+  const pC2H2 = (c2h2 / total) * 100;
+  
+  const k = 0.4;
+  const points = [
+    { x: 0, y: pH2 * k },
+    { x: pC2H6 * k * Math.cos(rad(162)), y: pC2H6 * k * Math.sin(rad(162)) },
+    { x: pCH4 * k * Math.cos(rad(234)), y: pCH4 * k * Math.sin(rad(234)) },
+    { x: pC2H4 * k * Math.cos(rad(306)), y: pC2H4 * k * Math.sin(rad(306)) },
+    { x: pC2H2 * k * Math.cos(rad(18)), y: pC2H2 * k * Math.sin(rad(18)) }
+  ];
+  
+  let Cx = 0, Cy = 0;
+  points.forEach(p => {
+    Cx += p.x;
+    Cy += p.y;
+  });
+  
+  const dotX = toX(Cx);
+  const dotY = toY(Cy);
+  
+  // Gambar titik diagnosis (merah)
+  doc.setFillColor(255, 0, 0);
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.circle(dotX, dotY, 2, 'FD');
+};
+
 // Fungsi utama untuk generate PDF sesuai template
 export const generatePDFFromTemplate = (data) => {
   try {
@@ -27,7 +188,7 @@ export const generatePDFFromTemplate = (data) => {
     // Ambil kondisi
     const kondisiInfo = getKondisi(data.status_ieee, data);
     
-    let currentY = 10;
+    let currentY = 15;
     
     // ============================================
     // 1. HEADER - Standar IEEE
@@ -162,8 +323,9 @@ export const generatePDFFromTemplate = (data) => {
     autoTable(doc, {
       startY: tdcgY,
       body: [
-        [{ content: "HASIL TDCG", styles: { textColor: [220, 50, 50], fontStyle: "bold" } }, tdcgValue],
-        [{ content: "STATUS KONDISI", styles: { textColor: [0, 139, 139], fontStyle: "bold" } }, 
+        [{ content: "HASIL TDCG", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
+         { content: tdcgValue, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
+        [{ content: "STATUS KONDISI", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
          { content: `Kondisi ${kondisiInfo.kondisi}`, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
       ],
       theme: "grid",
@@ -184,51 +346,74 @@ export const generatePDFFromTemplate = (data) => {
       margin: { left: 14 },
     });
     
-    currentY = doc.lastAutoTable.finalY + 10;
+    currentY = doc.lastAutoTable.finalY + 8;
     
     // ============================================
-    // 4. KONDISI STATUS
+    // 4. KONDISI STATUS (Kiri) & DUVAL PENTAGON (Kanan)
     // ============================================
     
-    doc.setFontSize(11);
+    const kondisiStartY = currentY;
+    
+    // Kondisi Status (Kiri)
+    doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
     doc.text("Kondisi Status", 14, currentY);
     
-    currentY += 8;
+    currentY += 6;
     
     // Kondisi 1 - Normal (Hijau)
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 1", 25, currentY);
-    doc.setTextColor(0, 128, 0); // Hijau
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 1", 20, currentY);
+    doc.setTextColor(0, 128, 0);
     doc.setFont("helvetica", "bold");
-    doc.text(": Normal. Lanjut monitoring.", 50, currentY);
+    doc.text(": Normal. Lanjut monitoring.", 42, currentY);
     
-    currentY += 6;
+    currentY += 5;
     
     // Kondisi 2 - Waspada (Orange)
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 2", 25, currentY);
-    doc.setTextColor(255, 165, 0); // Orange
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 2", 20, currentY);
+    doc.setTextColor(255, 165, 0);
     doc.setFont("helvetica", "bold");
-    doc.text(": Waspada. Cek beban & interval uji.", 50, currentY);
+    doc.text(": Waspada. Cek beban & interval uji.", 42, currentY);
     
-    currentY += 6;
+    currentY += 5;
     
     // Kondisi 3 - Bahaya (Merah)
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 3", 25, currentY);
-    doc.setTextColor(220, 50, 50); // Merah
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 3", 20, currentY);
+    doc.setTextColor(220, 50, 50);
     doc.setFont("helvetica", "bold");
-    doc.text(": Bahaya. Indikasi kerusakan aktif.", 50, currentY);
+    doc.text(": Bahaya. Indikasi kerusakan aktif.", 42, currentY);
     
-    currentY += 10;
+    
+    // Duval Pentagon (Kanan) - Gambar di sebelah kanan kondisi status
+    const pentagonCenterX = 150;
+    const pentagonCenterY = kondisiStartY + 22;
+    const pentagonSize = 42;
+    
+    // Data gas untuk pentagon
+    const gasData = {
+      h2: parseFloat(data.h2) || 0,
+      ch4: parseFloat(data.ch4) || 0,
+      c2h6: parseFloat(data.c2h6) || 0,
+      c2h4: parseFloat(data.c2h4) || 0,
+      c2h2: parseFloat(data.c2h2) || 0
+    };
+    
+    // Gambar Duval Pentagon
+    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    
+    // Tabel dimulai setelah pentagon selesai tapi dengan margin minimal
+    const pentagonBottomY = pentagonCenterY + (pentagonSize * 0.95);
+    currentY = pentagonBottomY + -14;
     
     // ============================================
     // 5. IEEE Std C57.104™-2019 Reference Table
@@ -415,8 +600,9 @@ export const generatePDFBlob = (data) => {
     autoTable(doc, {
       startY: tdcgY,
       body: [
-        [{ content: "HASIL TDCG", styles: { textColor: [220, 50, 50], fontStyle: "bold" } }, tdcgValue],
-        [{ content: "STATUS KONDISI", styles: { textColor: [0, 139, 139], fontStyle: "bold" } }, 
+        [{ content: "HASIL TDCG", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
+         { content: tdcgValue, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
+        [{ content: "STATUS KONDISI", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
          { content: `Kondisi ${kondisiInfo.kondisi}`, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
       ],
       theme: "grid",
@@ -427,41 +613,61 @@ export const generatePDFBlob = (data) => {
       margin: { left: 14 },
     });
     
-    currentY = doc.lastAutoTable.finalY + 10;
+    currentY = doc.lastAutoTable.finalY + 8;
     
-    // KONDISI STATUS
-    doc.setFontSize(11);
+    // KONDISI STATUS (Kiri) & DUVAL PENTAGON (Kanan)
+    const kondisiStartY = currentY;
+    
+    doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
     doc.text("Kondisi Status", 14, currentY);
-    currentY += 8;
+    currentY += 6;
     
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 1", 25, currentY);
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 1", 20, currentY);
     doc.setTextColor(0, 128, 0);
     doc.setFont("helvetica", "bold");
-    doc.text(": Normal. Lanjut monitoring.", 50, currentY);
-    currentY += 6;
+    doc.text(": Normal. Lanjut monitoring.", 42, currentY);
+    currentY += 5;
     
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 2", 25, currentY);
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 2", 20, currentY);
     doc.setTextColor(255, 165, 0);
     doc.setFont("helvetica", "bold");
-    doc.text(": Waspada. Cek beban & interval uji.", 50, currentY);
-    currentY += 6;
+    doc.text(": Waspada. Cek beban & interval uji.", 42, currentY);
+    currentY += 5;
     
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 20, currentY);
-    doc.text("Kondisi 3", 25, currentY);
+    doc.text("\u2022", 16, currentY);
+    doc.text("Kondisi 3", 20, currentY);
     doc.setTextColor(220, 50, 50);
     doc.setFont("helvetica", "bold");
-    doc.text(": Bahaya. Indikasi kerusakan aktif.", 50, currentY);
-    currentY += 10;
+    doc.text(": Bahaya. Indikasi kerusakan aktif.", 42, currentY);
+    
+    // Duval Pentagon (Kanan)
+    const pentagonCenterX = 150;
+    const pentagonCenterY = kondisiStartY + 11;
+    const pentagonSize = 42;
+    
+    const gasData = {
+      h2: parseFloat(data.h2) || 0,
+      ch4: parseFloat(data.ch4) || 0,
+      c2h6: parseFloat(data.c2h6) || 0,
+      c2h4: parseFloat(data.c2h4) || 0,
+      c2h2: parseFloat(data.c2h2) || 0
+    };
+    
+    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    
+    // Tabel dimulai setelah pentagon selesai tapi dengan margin minimal
+    const pentagonBottomY = pentagonCenterY + (pentagonSize * 0.95);
+    currentY = pentagonBottomY + -14;
     
     // IEEE REFERENCE TABLE
     doc.setFontSize(11);

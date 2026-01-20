@@ -272,7 +272,7 @@ Website ini adalah sistem monitoring cerdas untuk analisis kesehatan transformat
 
 === FORMAT PENOLAKAN (jika di luar topik) ===
 Jika ada pertanyaan di luar topik, jawab PERSIS seperti ini:
-"Mohon maaf, saya Volty hanya melayani pertanyaan seputar **PLN, kelistrikan, transformator, DGA, dan gardu induk**. Silakan ajukan pertanyaan yang berkaitan dengan topik tersebut. 🔌⚡"
+"Mohon maaf, saya Volty hanya melayani pertanyaan seputar PLN, kelistrikan, transformator, DGA, dan gardu induk. Silakan ajukan pertanyaan yang berkaitan dengan topik tersebut. 🔌⚡"
 """
 
 @app.post("/chat")
