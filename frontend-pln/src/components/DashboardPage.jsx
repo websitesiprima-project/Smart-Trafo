@@ -133,17 +133,27 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
   const topTrafos = useMemo(() => {
     if (safeLiveData.length === 0) return [];
 
-    const latestMap = new Map();
+    // Ambil data dengan TDCG tertinggi untuk setiap trafo (bukan data terbaru)
+    const highestTdcgMap = new Map();
     safeLiveData.forEach((item) => {
       const key = `${(item.lokasi_gi || "").toUpperCase()}-${(
         item.nama_trafo || ""
       ).toUpperCase()}`;
-      if (!latestMap.has(key) || item.id > latestMap.get(key).id) {
-        latestMap.set(key, item);
+      const currentTdcg = parseFloat(item.tdcg) || parseFloat(item.tdcg_value) || 0;
+      
+      if (!highestTdcgMap.has(key)) {
+        highestTdcgMap.set(key, item);
+      } else {
+        const existingTdcg = parseFloat(highestTdcgMap.get(key).tdcg) || 
+                             parseFloat(highestTdcgMap.get(key).tdcg_value) || 0;
+        // Simpan data dengan TDCG tertinggi, bukan data terbaru
+        if (currentTdcg > existingTdcg) {
+          highestTdcgMap.set(key, item);
+        }
       }
     });
 
-    return Array.from(latestMap.values())
+    return Array.from(highestTdcgMap.values())
       .map((item) => {
         const gasVal = parseFloat(item.tdcg) || parseFloat(item.tdcg_value) || 0;
         const raw = (item.ieee_status || "").toString().toUpperCase();
@@ -482,8 +492,11 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
           className={`rounded-2xl border shadow-sm p-6 flex flex-col ${cardBg}`}
         >
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/10">
-            <h3 className={`font-bold flex items-center gap-2 ${textMain}`}>
-              <Trophy className="text-yellow-500" size={20} /> TOP HIGH TDCG TRAFO
+            <h3 className={`font-bold ${textMain}`}>
+              <div className="flex items-center gap-2.5">
+                  <Trophy className="text-yellow-500" size={20}/>
+                    TOP HIGH TDCG TRAFO
+              </div>
             </h3>
             <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-1 rounded">
               Sorted by TDCG

@@ -351,111 +351,64 @@ const InputFormPage = ({
                 </div>
               </div>
 
-              {/* 2. MAIN GRID (TABLE & CHARTS) */}
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
-                {/* KOLOM KIRI: DATA TABLE (Span 4) */}
-                <div className="xl:col-span-4 flex flex-col h-full">
-                  <div
-                    className={`flex-1 border rounded-2xl overflow-hidden shadow-sm ${
-                      isDarkMode ? "border-slate-600" : "border-gray-300"
-                    }`}
-                  >
-                    <div className="bg-gray-100 p-4 border-b border-gray-300 font-bold text-center text-sm text-gray-700 tracking-wider">
-                      DATA KONSENTRASI GAS
-                    </div>
-                    <table className="w-full text-sm">
-                      <tbody
-                        className={`divide-y ${
-                          isDarkMode
-                            ? "divide-slate-700 text-gray-300"
-                            : "divide-gray-200 text-gray-700"
-                        }`}
-                      >
-                        {gasTableData.map((r) => (
-                          <tr
-                            key={r.no}
-                            className={
-                              isDarkMode
-                                ? "hover:bg-slate-700 transition-colors"
-                                : "hover:bg-gray-50 transition-colors"
-                            }
-                          >
-                            <td className="px-5 py-4 font-medium">{r.name}</td>
-                            <td className="px-5 py-4 text-right font-mono font-bold text-base">
-                              {r.value}
-                            </td>
-                            <td className="px-2 py-4 text-xs text-gray-400">
-                              ppm
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              {/* 2. MAIN GRID (TABLE & CHART - BALANCED) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* KOLOM KIRI: DATA TABLE */}
+                <div className={`p-6 border rounded-2xl shadow-sm overflow-hidden ${
+                  isDarkMode ? "border-slate-600" : "border-gray-300"
+                }`}>
+                  <div className="bg-gray-100 p-4 border-b border-gray-300 font-bold text-center text-sm text-gray-700 tracking-wider mb-4 -m-6 -mb-0 rounded-t-xl">
+                    DATA KONSENTRASI GAS
                   </div>
+                  <table className="w-full text-sm mt-4">
+                    <tbody
+                      className={`divide-y ${
+                        isDarkMode
+                          ? "divide-slate-700 text-gray-300"
+                          : "divide-gray-200 text-gray-700"
+                      }`}
+                    >
+                      {gasTableData.map((r) => (
+                        <tr
+                          key={r.no}
+                          className={
+                            isDarkMode
+                              ? "hover:bg-slate-700 transition-colors"
+                              : "hover:bg-gray-50 transition-colors"
+                          }
+                        >
+                          <td className="px-4 py-3 font-medium">{r.name}</td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-base">
+                            {r.value}
+                          </td>
+                          <td className="px-2 py-3 text-xs text-gray-400">
+                            ppm
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
-                {/* KOLOM KANAN: VISUALISASI (Span 8 - Area Luas) */}
-                <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* CARD 1: DUVAL PENTAGON */}
-                  <div
-                    className={`p-6 rounded-2xl border flex flex-col items-center justify-center min-h-[380px] shadow-sm ${
-                      isDarkMode
-                        ? "bg-slate-700/30 border-slate-600"
-                        : "bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    <h5 className="text-xs font-bold text-gray-500 mb-6 uppercase tracking-widest text-center">
-                      Duval Pentagon
-                    </h5>
-                    {/* Scale diperbesar sedikit agar lebih jelas di area luas */}
-                    <div className="transform scale-110">
-                      <DuvalPentagon
-                        h2={formData.h2}
-                        ch4={formData.ch4}
-                        c2h6={formData.c2h6}
-                        c2h4={formData.c2h4}
-                        c2h2={formData.c2h2}
-                      />
-                    </div>
-                  </div>
-
-                  {/* CARD 2: DUVAL TRIANGLE */}
-                  <div
-                    className={`p-6 rounded-2xl border flex flex-col items-center justify-between min-h-[380px] shadow-sm ${
-                      isDarkMode
-                        ? "bg-slate-700/30 border-slate-600"
-                        : "bg-gray-50 border-gray-200"
-                    }`}
-                  >
-                    <h5 className="text-xs font-bold text-gray-500 mb-6 uppercase tracking-widest text-center">
-                      Duval Triangle 1
-                    </h5>
-                    {result.duval_data ? (
-                      <div className="flex flex-col items-center w-full h-full justify-between">
-                        <div className="transform scale-110 mb-4">
-                          <DuvalTriangle
-                            ch4={result.duval_data.ch4}
-                            c2h4={result.duval_data.c2h4}
-                            c2h2={result.duval_data.c2h2}
-                          />
-                        </div>
-                        <div className="w-full text-center mt-4">
-                          <span
-                            className={`inline-block px-4 py-2 rounded-lg text-sm font-bold border shadow-sm ${
-                              isDarkMode
-                                ? "bg-slate-800 border-slate-600 text-cyan-400"
-                                : "bg-white border-gray-200 text-cyan-700"
-                            }`}
-                          >
-                            {result.duval_diagnosis}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-1 items-center justify-center text-sm text-gray-400 italic">
-                        Data Triangle Tidak Tersedia
-                      </div>
-                    )}
+                {/* KOLOM KANAN: DUVAL PENTAGON */}
+                <div
+                  className={`p-6 rounded-2xl border flex flex-col items-center justify-center min-h-[380px] shadow-sm ${
+                    isDarkMode
+                      ? "bg-slate-700/30 border-slate-600"
+                      : "bg-gray-50 border-gray-200"
+                  }`}
+                >
+                  <h5 className="text-xs font-bold text-gray-500 mb-6 uppercase tracking-widest text-center">
+                    Duval Pentagon
+                  </h5>
+                  <div className="transform scale-125">
+                    <DuvalPentagon
+                      h2={formData.h2}
+                      ch4={formData.ch4}
+                      c2h6={formData.c2h6}
+                      c2h4={formData.c2h4}
+                      c2h2={formData.c2h2}
+                    />
                   </div>
                 </div>
               </div>
