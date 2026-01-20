@@ -21,6 +21,7 @@ import {
   generatePDFFromTemplate,
   generatePDFBlob,
 } from "../utils/PDFGenerator";
+import DuvalPentagon from "./DuvalPentagon";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
@@ -526,11 +527,11 @@ const HistoryPage = ({
         </div>
       </div>
 
-      {/* === MODAL DETAIL TRAFO (PERBAIKAN WARNA TOTAL) === */}
+      {/* === MODAL DETAIL TRAFO === */}
       {selectedItem && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-sm overflow-hidden" style={{ margin: 0, padding: 0 }}>
           <div
-            className={`w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh] 
+            className={`w-[95%] max-w-5xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[92vh] m-4
             ${isDarkMode ? "bg-slate-800" : "bg-white"}
           `}
           >
@@ -562,7 +563,7 @@ const HistoryPage = ({
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
-                className={`p-2 rounded-full transition ${
+                className={`p-2 rounded-full transition flex-shrink-0 ${
                   isDarkMode
                     ? "hover:bg-slate-700 text-white"
                     : "hover:bg-gray-100 text-gray-800"
@@ -572,8 +573,8 @@ const HistoryPage = ({
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto flex-1">
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
               {/* Info Utama (Total Gas & Status) */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 {/* Kartu Total Gas */}
@@ -636,49 +637,81 @@ const HistoryPage = ({
                 </div>
               </div>
 
-              <h4
-                className={`font-bold mb-4 pb-2 border-b flex items-center gap-2
-                ${
-                  isDarkMode
-                    ? "text-gray-200 border-slate-700"
-                    : "text-gray-700 border-gray-100"
-                }
-              `}
-              >
-                <FileText size={16} /> Komposisi Gas Terlarut
-              </h4>
+              {/* Main Grid: Gas Table & Duval Pentagon */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Kolom Kiri: Komposisi Gas */}
+                <div>
+                  <h4
+                    className={`font-bold mb-4 pb-2 border-b flex items-center gap-2
+                    ${
+                      isDarkMode
+                        ? "text-gray-200 border-slate-700"
+                        : "text-gray-700 border-gray-100"
+                    }
+                  `}
+                  >
+                    <FileText size={16} /> Komposisi Gas Terlarut
+                  </h4>
 
-              {/* Grid Gas */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
-                  (gas) => (
-                    <div
-                      key={gas}
-                      className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center transition-colors
-                      ${
-                        isDarkMode
-                          ? "bg-slate-700 border-slate-600"
-                          : "bg-white border-gray-200"
-                      }
-                    `}
-                    >
-                      <span
-                        className={`uppercase text-xs font-bold mb-1 ${
-                          isDarkMode ? "text-gray-400" : "text-gray-500"
-                        }`}
-                      >
-                        {gas}
-                      </span>
-                      <span
-                        className={`font-mono text-lg font-bold ${
-                          isDarkMode ? "text-white" : "text-gray-800"
-                        }`}
-                      >
-                        {selectedItem[gas]}
-                      </span>
-                    </div>
-                  ),
-                )}
+                  {/* Grid Gas */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
+                      (gas) => (
+                        <div
+                          key={gas}
+                          className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center transition-colors
+                          ${
+                            isDarkMode
+                              ? "bg-slate-700 border-slate-600"
+                              : "bg-white border-gray-200"
+                          }
+                        `}
+                        >
+                          <span
+                            className={`uppercase text-xs font-bold mb-1 ${
+                              isDarkMode ? "text-gray-400" : "text-gray-500"
+                            }`}
+                          >
+                            {gas}
+                          </span>
+                          <span
+                            className={`font-mono text-lg font-bold ${
+                              isDarkMode ? "text-white" : "text-gray-800"
+                            }`}
+                          >
+                            {selectedItem[gas]}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                {/* Kolom Kanan: Duval Pentagon */}
+                <div
+                  className={`p-6 rounded-xl border flex flex-col items-center justify-center ${
+                    isDarkMode
+                      ? "bg-slate-700/30 border-slate-600"
+                      : "bg-gray-50 border-gray-200"
+                  }`}
+                >
+                  <h4
+                    className={`font-bold mb-4 text-xs uppercase tracking-widest text-center ${
+                      isDarkMode ? "text-gray-300" : "text-gray-600"
+                    }`}
+                  >
+                    Duval Pentagon
+                  </h4>
+                  <div className="transform scale-100">
+                    <DuvalPentagon
+                      h2={parseFloat(selectedItem.h2) || 0}
+                      ch4={parseFloat(selectedItem.ch4) || 0}
+                      c2h6={parseFloat(selectedItem.c2h6) || 0}
+                      c2h4={parseFloat(selectedItem.c2h4) || 0}
+                      c2h2={parseFloat(selectedItem.c2h2) || 0}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

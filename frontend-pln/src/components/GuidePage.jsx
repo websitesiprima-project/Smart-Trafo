@@ -393,9 +393,9 @@ const GuidePage = ({ isDarkMode }) => {
 
         {/* --- SIDEBAR KANAN (Info Pendukung - 1/3 Layar) --- */}
         <div className="space-y-6">
-          {/* Status Card (Legenda Warna) */}
+          {/* Status Card (Legenda Warna) - STICKY */}
           <div
-            className={`p-6 rounded-2xl border shadow-lg sticky top-6 ${
+            className={`p-6 rounded-2xl border shadow-lg top-4 z-40 ${
               isDarkMode
                 ? "bg-[#1e293b] border-slate-700"
                 : "bg-white border-slate-200"
@@ -406,7 +406,7 @@ const GuidePage = ({ isDarkMode }) => {
             </h3>
             <ul className="space-y-4 text-sm">
               <li className="flex gap-3">
-                <span className="w-3 h-3 mt-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span>
+                <span className="w-3 h-3 mt-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] flex-shrink-0"></span>
                 <div>
                   <strong className="text-emerald-500 block">
                     Condition 1
@@ -417,7 +417,7 @@ const GuidePage = ({ isDarkMode }) => {
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="w-3 h-3 mt-1 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]"></span>
+                <span className="w-3 h-3 mt-1 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex-shrink-0"></span>
                 <div>
                   <strong className="text-yellow-500 block">Condition 2</strong>
                   <span className="opacity-70 text-xs">
@@ -426,7 +426,7 @@ const GuidePage = ({ isDarkMode }) => {
                 </div>
               </li>
               <li className="flex gap-3">
-                <span className="w-3 h-3 mt-1 rounded-full bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.5)] animate-pulse"></span>
+                <span className="w-3 h-3 mt-1 rounded-full bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.5)] animate-pulse flex-shrink-0"></span>
                 <div>
                   <strong className="text-rose-600 block">Condition 3</strong>
                   <span className="opacity-70 text-xs">
