@@ -409,7 +409,7 @@ const GuidePage = ({ isDarkMode }) => {
                 <span className="w-3 h-3 mt-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] flex-shrink-0"></span>
                 <div>
                   <strong className="text-emerald-500 block">
-                    Condition 1
+                    Kondisi 1
                   </strong>
                   <span className="opacity-70 text-xs">
                     Normal. Lanjut monitoring.
@@ -419,7 +419,7 @@ const GuidePage = ({ isDarkMode }) => {
               <li className="flex gap-3">
                 <span className="w-3 h-3 mt-1 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)] flex-shrink-0"></span>
                 <div>
-                  <strong className="text-yellow-500 block">Condition 2</strong>
+                  <strong className="text-yellow-500 block">Kondisi 2</strong>
                   <span className="opacity-70 text-xs">
                     Waspada. Cek beban & interval uji.
                   </span>
@@ -428,9 +428,9 @@ const GuidePage = ({ isDarkMode }) => {
               <li className="flex gap-3">
                 <span className="w-3 h-3 mt-1 rounded-full bg-rose-600 shadow-[0_0_8px_rgba(225,29,72,0.5)] animate-pulse flex-shrink-0"></span>
                 <div>
-                  <strong className="text-rose-600 block">Condition 3</strong>
+                  <strong className="text-rose-600 block">Kondisi 3</strong>
                   <span className="opacity-70 text-xs">
-                    Bahaya. Indikasi kerusakan aktif.
+                    Kritis. Indikasi kerusakan aktif.
                   </span>
                 </div>
               </li>

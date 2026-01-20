@@ -15,6 +15,7 @@ import {
   CheckSquare,
   Square,
   Zap,
+  ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -34,16 +35,18 @@ const HistoryPage = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedYear, setSelectedYear] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState("All"); // "All", "1", "2", "3"
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [sortTdcg, setSortTdcg] = useState("default"); // "default", "highest", "lowest"
 
   // State untuk mode seleksi batch
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // --- 1. FILTER TAHUN & PENCARIAN ---
+  // --- 1. FILTER TAHUN & PENCARIAN & STATUS & SORTING ---
   const filteredData = useMemo(() => {
-    return historyData.filter((item) => {
+    let result = historyData.filter((item) => {
       // Filter Text
       const term = searchTerm.toLowerCase();
       const matchText =
@@ -56,9 +59,32 @@ const HistoryPage = ({
         : "";
       const matchYear = selectedYear === "All" || itemYear === selectedYear;
 
-      return matchText && matchYear;
+      // Filter Status
+      let matchStatus = true;
+      if (selectedStatus !== "All") {
+        const status = (item.status_ieee || "").toLowerCase();
+        if (selectedStatus === "1") {
+          matchStatus = status.includes("kondisi 1") || status.includes("normal");
+        } else if (selectedStatus === "2") {
+          matchStatus = status.includes("kondisi 2") || status.includes("waspada");
+        } else if (selectedStatus === "3") {
+          matchStatus = status.includes("kondisi 3") || status.includes("bahaya") || status.includes("kritis");
+        }
+      }
+
+      return matchText && matchYear && matchStatus;
     });
-  }, [historyData, searchTerm, selectedYear]);
+
+    // Sorting berdasarkan TDCG
+    if (sortTdcg === "highest") {
+      result = result.sort((a, b) => (b.tdcg || 0) - (a.tdcg || 0));
+    } else if (sortTdcg === "lowest") {
+      result = result.sort((a, b) => (a.tdcg || 0) - (b.tdcg || 0));
+    }
+    // Jika "default", tidak perlu sorting (tetap urutan original)
+
+    return result;
+  }, [historyData, searchTerm, selectedYear, selectedStatus, sortTdcg]);
 
   // List Tahun Unik dari Data
   const availableYears = useMemo(() => {
@@ -271,7 +297,8 @@ const HistoryPage = ({
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
       {/* HEADER & FILTER */}
-      <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b pb-6 border-gray-200/50">
+      <div className="space-y-4">
+        {/* HEADER */}
         <div>
           <h2
             className={`text-2xl font-bold ${
@@ -289,104 +316,159 @@ const HistoryPage = ({
           </p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-          {/* FILTER TAHUN */}
-          <div className="relative">
-            <Filter
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className={`pl-10 pr-4 py-2 rounded-lg border text-sm font-bold outline-none cursor-pointer ${
-                isDarkMode
-                  ? "bg-slate-800 border-slate-700 text-white"
-                  : "bg-white border-gray-300"
-              }`}
-            >
-              <option value="All">Semua Tahun</option>
-              {availableYears.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+        {/* FILTER SECTION */}
+        <div
+          className={`p-4 rounded-xl border ${
+            isDarkMode
+              ? "bg-slate-800/50 border-slate-700"
+              : "bg-gray-50 border-gray-200"
+          }`}
+        >
+          {/* Filter Row 1: Year, TDCG, Status */}
+          <div className="flex flex-col md:flex-row gap-3 mb-4">
+            {/* FILTER TAHUN */}
+            <div className="relative flex-1 md:flex-none md:w-44">
+              <Filter
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                  isDarkMode
+                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
+                    : "bg-white border-gray-300 hover:border-gray-400"
+                }`}
+              >
+                <option value="All">Semua Tahun</option>
+                {availableYears.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* FILTER TDCG */}
+            <div className="relative flex-1 md:flex-none md:w-44">
+              <ArrowUpDown
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <select
+                value={sortTdcg}
+                onChange={(e) => setSortTdcg(e.target.value)}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                  isDarkMode
+                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
+                    : "bg-white border-gray-300 hover:border-gray-400"
+                }`}
+              >
+                <option value="default">Urutkan TDCG</option>
+                <option value="highest">TDCG Tertinggi</option>
+                <option value="lowest">TDCG Terendah</option>
+              </select>
+            </div>
+
+            {/* FILTER STATUS */}
+            <div className="relative flex-1 md:flex-none md:w-44">
+              <AlertTriangle
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                  isDarkMode
+                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
+                    : "bg-white border-gray-300 hover:border-gray-400"
+                }`}
+              >
+                <option value="All">Semua Status</option>
+                <option value="1">Kondisi 1 (Normal)</option>
+                <option value="2">Kondisi 2 (Waspada)</option>
+                <option value="3">Kondisi 3 (Kritis)</option>
+              </select>
+            </div>
+
+            {/* SEARCH */}
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                size={16}
+              />
+              <input
+                type="text"
+                placeholder="Cari GI atau Trafo..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none transition-colors ${
+                  isDarkMode
+                    ? "bg-slate-900 border-slate-600 text-white placeholder-slate-400 hover:border-slate-500 focus:border-slate-500"
+                    : "bg-white border-gray-300 placeholder-gray-400 hover:border-gray-400 focus:border-gray-400"
+                }`}
+              />
+            </div>
           </div>
 
-          {/* SEARCH */}
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              size={16}
-            />
-            <input
-              type="text"
-              placeholder="Cari..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={`pl-10 pr-4 py-2 rounded-lg border text-sm outline-none ${
-                isDarkMode
-                  ? "bg-slate-800 border-slate-700 text-white"
-                  : "bg-white border-gray-300"
-              }`}
-            />
+          {/* Filter Row 2: Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {!selectionMode ? (
+              <>
+                <button
+                  onClick={toggleSelectionMode}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  <CheckSquare size={16} />
+                  <span>Seleksi</span>
+                </button>
+                <button
+                  onClick={handleClearAll}
+                  disabled={isDeleting || historyData.length === 0}
+                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="animate-spin" size={16} />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  <span>Hapus Semua</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleBatchDownload}
+                  disabled={selectedIds.length === 0}
+                  className="px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  <Download size={16} />
+                  Download ({selectedIds.length})
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  disabled={selectedIds.length === 0 || isDeleting}
+                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="animate-spin" size={16} />
+                  ) : (
+                    <Trash2 size={16} />
+                  )}
+                  <span>Hapus ({selectedIds.length})</span>
+                </button>
+                <button
+                  onClick={toggleSelectionMode}
+                  className="px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  <X size={16} />
+                  <span>Batal</span>
+                </button>
+              </>
+            )}
           </div>
-
-          {/* BUTTONS */}
-          {!selectionMode ? (
-            <>
-              <button
-                onClick={toggleSelectionMode}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                <CheckSquare size={16} />
-                <span className="hidden md:inline">Seleksi</span>
-              </button>
-              <button
-                onClick={handleClearAll}
-                disabled={isDeleting || historyData.length === 0}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                {isDeleting ? (
-                  <Loader2 className="animate-spin" size={16} />
-                ) : (
-                  <Trash2 size={16} />
-                )}
-                <span className="hidden md:inline">Hapus Semua</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handleBatchDownload}
-                disabled={selectedIds.length === 0}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                <Download size={16} />
-                Download ({selectedIds.length})
-              </button>
-              <button
-                onClick={handleBatchDelete}
-                disabled={selectedIds.length === 0 || isDeleting}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                {isDeleting ? (
-                  <Loader2 className="animate-spin" size={16} />
-                ) : (
-                  <Trash2 size={16} />
-                )}
-                Hapus ({selectedIds.length})
-              </button>
-              <button
-                onClick={toggleSelectionMode}
-                className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
-              >
-                <X size={16} />
-                Batal
-              </button>
-            </>
-          )}
         </div>
       </div>
 
