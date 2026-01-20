@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -11,7 +11,24 @@ import {
   Activity,
   Flame,
   Trophy,
+  X,
+  TrendingUp,
+  FileBarChart,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 // --- 1. SETUP IKON ---
 const createCustomIcon = (status) => {
@@ -50,8 +67,59 @@ const createCustomIcon = (status) => {
   });
 };
 
+// Gas Configuration for Trending Chart
+const GAS_CONFIG = [
+  { key: "TDCG", color: "#10b981", type: "area" },
+  { key: "H2", color: "#3b82f6", type: "line", strokeWidth: 2 },
+  { key: "CH4", color: "#eab308", type: "line", strokeWidth: 2 },
+  { key: "C2H6", color: "#a855f7", type: "line", strokeWidth: 2 },
+  { key: "C2H4", color: "#f97316", type: "line", strokeWidth: 2 },
+  { key: "C2H2", color: "#ef4444", type: "line", strokeWidth: 2 },
+  { key: "CO", color: "#64748b", type: "line", strokeWidth: 2, dash: "5 5" },
+  { key: "CO2", color: "#06b6d4", type: "line", strokeWidth: 2, dash: "5 5" },
+];
+
+const formatDate = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 const DashboardPage = ({ isDarkMode, liveData = [] }) => {
   const safeLiveData = Array.isArray(liveData) ? liveData : [];
+  const [selectedTrafo, setSelectedTrafo] = useState(null);
+  const [activeSeries, setActiveSeries] = useState(
+    GAS_CONFIG.reduce((acc, gas) => {
+      acc[gas.key] = true;
+      return acc;
+    }, {})
+  );
+
+  const toggleSeries = (key) => {
+    setActiveSeries((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Disable body scroll when modal is open
+  useEffect(() => {
+    if (selectedTrafo) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [selectedTrafo]);
 
   const totalStats = Object.values(ultgData).reduce(
     (acc, curr) => ({
@@ -76,16 +144,70 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
     });
 
     return Array.from(latestMap.values())
-      .map((item) => ({
-        gi: item.lokasi_gi,
-        unit: item.nama_trafo,
-        tdcg: parseFloat(item.tdcg) || parseFloat(item.tdcg_value) || 0,
-        status: item.ieee_status || "Normal",
-        id: item.id,
-      }))
+      .map((item) => {
+        const gasVal = parseFloat(item.tdcg) || parseFloat(item.tdcg_value) || 0;
+        const raw = (item.ieee_status || "").toString().toUpperCase();
+        let statusLabel = "";
+
+        if (raw.includes("COND 3") || raw.includes("KRITIS") || raw.includes("BAHAYA")) {
+          statusLabel = "Kondisi 3 - KRITIS";
+        } else if (raw.includes("COND 2") || raw.includes("WASPADA")) {
+          statusLabel = "Kondisi 2 - WASPADA";
+        } else if (raw.includes("NORMAL")) {
+          if (gasVal >= 720) statusLabel = "Kondisi 3 - KRITIS (High Gas)";
+          else if (gasVal >= 300) statusLabel = "Kondisi 2 - WASPADA (High Gas)";
+          else statusLabel = "Kondisi 1 - NORMAL";
+        } else {
+          // fallback based on gas if raw label is not explicit
+          if (gasVal >= 720) statusLabel = "Kondisi 3 - KRITIS";
+          else if (gasVal >= 300) statusLabel = "Kondisi 2 - WASPADA";
+          else statusLabel = "Kondisi 1 - NORMAL";
+        }
+
+        return {
+          gi: item.lokasi_gi,
+          unit: item.nama_trafo,
+          tdcg: gasVal,
+          status: statusLabel,
+          id: item.id,
+          date: item.tanggal_sampling || "",
+        };
+      })
       .sort((a, b) => b.tdcg - a.tdcg)
       .slice(0, 5);
   }, [safeLiveData]);
+
+  // Chart data for modal
+  const chartData = useMemo(() => {
+    if (!selectedTrafo) return [];
+
+    return safeLiveData
+      .filter(
+        (d) =>
+          d.lokasi_gi === selectedTrafo.gi &&
+          d.nama_trafo === selectedTrafo.unit
+      )
+      .map((d) => ({
+        dateLabel: formatDate(d.tanggal_sampling),
+        dateOriginal: d.tanggal_sampling,
+        H2: parseFloat(d.h2) || 0,
+        CH4: parseFloat(d.ch4) || 0,
+        C2H6: parseFloat(d.c2h6) || 0,
+        C2H4: parseFloat(d.c2h4) || 0,
+        C2H2: parseFloat(d.c2h2) || 0,
+        CO: parseFloat(d.co) || 0,
+        CO2: parseFloat(d.co2) || 0,
+        TDCG: d.tdcg
+          ? Number(d.tdcg)
+          : Number(d.h2) +
+            Number(d.ch4) +
+            Number(d.c2h6) +
+            Number(d.c2h4) +
+            Number(d.c2h2) +
+            Number(d.co),
+      }))
+      .sort((a, b) => new Date(a.dateOriginal) - new Date(b.dateOriginal));
+  }, [selectedTrafo, safeLiveData]);
 
   // --- 3. LOGIKA PIN PETA (FIX: PRIORITAS LABEL DI ATAS ANGKA) ---
   const getWorstCaseStatus = (giNameMap) => {
@@ -361,7 +483,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
         >
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200/10">
             <h3 className={`font-bold flex items-center gap-2 ${textMain}`}>
-              <Trophy className="text-yellow-500" size={20} /> Input Terakhir
+              <Trophy className="text-yellow-500" size={20} /> TOP HIGH TDCG TRAFO
             </h3>
             <span className="text-[10px] font-bold bg-green-100 text-green-600 px-2 py-1 rounded">
               Sorted by TDCG
@@ -398,18 +520,25 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
               return (
                 <div
                   key={idx}
-                  className="group border-b border-gray-100 pb-2 last:border-0"
+                  className="group border-b border-gray-100 pb-2 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 p-2 rounded transition-colors"
+                  onClick={() => setSelectedTrafo(item)}
                 >
                   <div className="flex justify-between items-end mb-1">
                     <div>
-                      <p
-                        className={`text-[10px] font-bold uppercase ${textSub}`}
-                      >
-                        {item.gi}
+                      <p className={`text-[10px] font-bold uppercase ${textSub}`}>
+                        <span className="inline-flex items-center gap-2">
+                          <span>{item.gi}</span>
+                          {item.date && (
+                            <span className="text-[10px] font-normal text-gray-500">{item.date}</span>
+                          )}
+                        </span>
                       </p>
-                      <p className={`text-sm font-bold ${textMain}`}>
-                        {item.unit}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <TrendingUp size={14} className="text-blue-500" />
+                        <p className={`text-sm font-bold ${textMain}`}>
+                          {item.unit}
+                        </p>
+                      </div>
                       <p className={`text-[10px] ${textColor} font-bold`}>
                         {item.status}
                       </p>
@@ -436,6 +565,220 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
           </div>
         </div>
       </div>
+
+      {/* Modal Trending Chart */}
+      {selectedTrafo && (
+        <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-sm overflow-hidden" style={{ margin: 0, padding: 0 }}>
+          <div
+            className={`w-[95%] max-w-5xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[92vh] m-4 ${
+              isDarkMode ? "bg-slate-800" : "bg-white"
+            }`}
+          >
+            {/* Header */}
+            <div
+              className={`flex justify-between items-center p-6 border-b ${
+                isDarkMode ? "border-slate-700" : "border-gray-200"
+              }`}
+            >
+              <div>
+                <h3
+                  className={`text-xl font-bold flex items-center gap-2 ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}
+                >
+                  <TrendingUp className="text-blue-500" size={24} />
+                  Analisis Trending - {selectedTrafo.gi}
+                </h3>
+                <p
+                  className={`text-sm mt-1 ${
+                    isDarkMode ? "text-gray-400" : "text-gray-500"
+                  }`}
+                >
+                  {selectedTrafo.unit}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedTrafo(null)}
+                className={`p-2 rounded-full transition ${
+                  isDarkMode
+                    ? "hover:bg-slate-700 text-white"
+                    : "hover:bg-gray-100 text-gray-800"
+                }`}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {/* Info Bar & Gas Type Toggle Buttons */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <div className={`text-sm ${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>
+                  <span className="font-bold">{chartData.length}</span> data sampel ditemukan
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {GAS_CONFIG.map((gas) => (
+                  <button
+                    key={gas.key}
+                    onClick={() => toggleSeries(gas.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${
+                      activeSeries[gas.key]
+                        ? `bg-opacity-10 border-opacity-50`
+                        : `opacity-50 grayscale border-transparent ${
+                            isDarkMode
+                              ? "bg-slate-700"
+                              : "bg-gray-100"
+                          }`
+                    }`}
+                    style={{
+                      backgroundColor: activeSeries[gas.key]
+                        ? `${gas.color}20`
+                        : undefined,
+                      borderColor: activeSeries[gas.key]
+                        ? gas.color
+                        : undefined,
+                      color: activeSeries[gas.key]
+                        ? gas.color
+                        : isDarkMode
+                        ? "#94a3b8"
+                        : "#64748b",
+                    }}
+                  >
+                    {activeSeries[gas.key] ? (
+                      <CheckCircle2 size={12} />
+                    ) : (
+                      <Circle size={12} />
+                    )}
+                    {gas.key}
+                  </button>
+                ))}
+                </div>
+              </div>
+
+              {/* Chart */}
+              <div
+                style={{ width: "100%", height: "450px", minHeight: "450px" }}
+              >
+                {chartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <ComposedChart
+                      data={chartData}
+                      margin={{ top: 5, right: 30, left: 0, bottom: 20 }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="colorTDCG"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#10b981"
+                            stopOpacity={0.1}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#10b981"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={isDarkMode ? "#334155" : "#e2e8f0"}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="dateLabel"
+                        stroke={isDarkMode ? "#94a3b8" : "#64748b"}
+                        tick={{ fontSize: 10 }}
+                        tickMargin={10}
+                        angle={-15}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        stroke={isDarkMode ? "#94a3b8" : "#64748b"}
+                        tick={{ fontSize: 11 }}
+                        label={{
+                          value: "ppm",
+                          angle: -90,
+                          position: "insideLeft",
+                          fill: isDarkMode ? "#94a3b8" : "#64748b",
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: isDarkMode ? "#1e293b" : "#fff",
+                          borderColor: isDarkMode ? "#334155" : "#e2e8f0",
+                          borderRadius: "8px",
+                        }}
+                        labelStyle={{
+                          color: isDarkMode ? "#fff" : "#000",
+                          marginBottom: "0.5rem",
+                          fontWeight: "bold",
+                        }}
+                      />
+
+                      {/* Dynamic Rendering */}
+                      {GAS_CONFIG.map((gas) => {
+                        if (!activeSeries[gas.key]) return null;
+
+                        if (gas.type === "area") {
+                          return (
+                            <Area
+                              key={gas.key}
+                              type="monotone"
+                              dataKey={gas.key}
+                              stroke={gas.color}
+                              fill={`url(#color${gas.key})`}
+                              strokeWidth={2}
+                              isAnimationActive={false}
+                            />
+                          );
+                        }
+                        return (
+                          <Line
+                            key={gas.key}
+                            type="monotone"
+                            dataKey={gas.key}
+                            stroke={gas.color}
+                            strokeWidth={gas.strokeWidth || 2}
+                            dot={false}
+                            strokeDasharray={gas.dash}
+                            activeDot={{ r: 6 }}
+                            isAnimationActive={false}
+                          />
+                        );
+                      })}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                    <AlertCircle size={48} className="text-gray-400 mb-4" />
+                    <h3
+                      className={`text-xl font-bold ${
+                        isDarkMode ? "text-white" : "text-gray-900"
+                      }`}
+                    >
+                      Data Tidak Ditemukan
+                    </h3>
+                    <p
+                      className={`text-sm mt-2 ${
+                        isDarkMode ? "text-slate-400" : "text-slate-500"
+                      }`}
+                    >
+                      Belum ada data history untuk aset ini.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
