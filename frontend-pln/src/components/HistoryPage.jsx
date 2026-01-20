@@ -14,9 +14,13 @@ import {
   Download,
   CheckSquare,
   Square,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
-import { generatePDFFromTemplate, generatePDFBlob } from "../utils/PDFGenerator";
+import {
+  generatePDFFromTemplate,
+  generatePDFBlob,
+} from "../utils/PDFGenerator";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
@@ -31,7 +35,7 @@ const HistoryPage = ({
   const [selectedYear, setSelectedYear] = useState("All");
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  
+
   // State untuk mode seleksi batch
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -58,7 +62,7 @@ const HistoryPage = ({
   // List Tahun Unik dari Data
   const availableYears = useMemo(() => {
     const years = new Set(
-      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean)
+      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean),
     );
     ["2022", "2023", "2024", "2025", "2026"].forEach((y) => years.add(y));
     return Array.from(years).sort().reverse();
@@ -93,7 +97,7 @@ const HistoryPage = ({
 
   const toggleSelectItem = (id) => {
     if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(itemId => itemId !== id));
+      setSelectedIds(selectedIds.filter((itemId) => itemId !== id));
     } else {
       setSelectedIds([...selectedIds, id]);
     }
@@ -103,7 +107,7 @@ const HistoryPage = ({
     if (selectedIds.length === filteredData.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredData.map(item => item.id));
+      setSelectedIds(filteredData.map((item) => item.id));
     }
   };
 
@@ -112,10 +116,10 @@ const HistoryPage = ({
       toast.warning("Pilih minimal 1 data untuk didownload.");
       return;
     }
-    
+
     // Jika hanya 1 file, download langsung
     if (selectedIds.length === 1) {
-      const item = historyData.find(d => d.id === selectedIds[0]);
+      const item = historyData.find((d) => d.id === selectedIds[0]);
       if (item) {
         try {
           await generatePDFFromTemplate(item);
@@ -128,43 +132,41 @@ const HistoryPage = ({
       setSelectionMode(false);
       return;
     }
-    
+
     // Jika lebih dari 1 file, buat ZIP
     toast.info(`Membuat ZIP untuk ${selectedIds.length} file PDF...`);
-    
+
     const zip = new JSZip();
     let successCount = 0;
-    
+
     for (const id of selectedIds) {
-      const item = historyData.find(d => d.id === id);
+      const item = historyData.find((d) => d.id === id);
       if (item) {
         try {
-          // Generate PDF menggunakan template yang sama dengan download individual
           const pdfBlob = await generatePDFBlob(item);
-          
-          // Add to ZIP with unique filename
-          const filename = `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}.pdf`
-            .replace(/[^a-z0-9_.-]/gi, '_');
+          const filename =
+            `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}.pdf`.replace(
+              /[^a-z0-9_.-]/gi,
+              "_",
+            );
           zip.file(filename, pdfBlob);
-          
           successCount++;
         } catch (error) {
           console.error(`Failed to generate PDF for ID ${id}:`, error);
         }
       }
     }
-    
-    // Generate ZIP dan download
+
     try {
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      const timestamp = new Date().toISOString().split('T')[0];
+      const timestamp = new Date().toISOString().split("T")[0];
       saveAs(zipBlob, `DGA_Reports_${timestamp}.zip`);
       toast.success(`Berhasil mengunduh ${successCount} file PDF dalam ZIP.`);
     } catch (error) {
       toast.error("Gagal membuat file ZIP.");
       console.error(error);
     }
-    
+
     setSelectedIds([]);
     setSelectionMode(false);
   };
@@ -174,12 +176,13 @@ const HistoryPage = ({
       toast.warning("Pilih minimal 1 data untuk dihapus.");
       return;
     }
-    
-    if (!window.confirm(`Hapus ${selectedIds.length} data yang dipilih?`)) return;
-    
+
+    if (!window.confirm(`Hapus ${selectedIds.length} data yang dipilih?`))
+      return;
+
     setIsDeleting(true);
     let count = 0;
-    
+
     for (const id of selectedIds) {
       try {
         await fetch(`http://127.0.0.1:8000/history/${id}`, {
@@ -191,7 +194,7 @@ const HistoryPage = ({
         console.error(e);
       }
     }
-    
+
     toast.success(`Berhasil menghapus ${count} data.`);
     fetchHistory();
     setSelectedIds([]);
@@ -199,7 +202,7 @@ const HistoryPage = ({
     setIsDeleting(false);
   };
 
-  // Styles
+  // Styles dengan Logika Eksplisit (Bukan dark:modifier)
   const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${
     isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
   }`;
@@ -310,7 +313,11 @@ const HistoryPage = ({
                 disabled={selectedIds.length === 0 || isDeleting}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-bold text-sm flex items-center gap-2 transition-all"
               >
-                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                {isDeleting ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}
                 Hapus ({selectedIds.length})
               </button>
               <button
@@ -338,12 +345,16 @@ const HistoryPage = ({
             <thead>
               <tr>
                 {selectionMode && (
-                  <th className={`text-center ${thClass}`} style={{width: "50px"}}>
+                  <th
+                    className={`text-center ${thClass}`}
+                    style={{ width: "50px" }}
+                  >
                     <button
                       onClick={toggleSelectAll}
                       className="flex items-center justify-center w-full"
                     >
-                      {selectedIds.length === filteredData.length && filteredData.length > 0 ? (
+                      {selectedIds.length === filteredData.length &&
+                      filteredData.length > 0 ? (
                         <CheckSquare size={18} className="text-blue-500" />
                       ) : (
                         <Square size={18} className="text-gray-400" />
@@ -355,19 +366,27 @@ const HistoryPage = ({
                 <th className={thClass}>Identitas</th>
                 <th className={thClass}>Status</th>
                 <th className={`text-center ${thClass}`}>TDCG</th>
-                {!selectionMode && <th className={`text-center ${thClass}`}>Aksi</th>}
+                {!selectionMode && (
+                  <th className={`text-center ${thClass}`}>Aksi</th>
+                )}
               </tr>
             </thead>
             <tbody>
               {loadingHistory ? (
                 <tr>
-                  <td colSpan={selectionMode ? "6" : "5"} className="p-8 text-center text-gray-500">
+                  <td
+                    colSpan={selectionMode ? "6" : "5"}
+                    className="p-8 text-center text-gray-500"
+                  >
                     Loading...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={selectionMode ? "6" : "5"} className="p-8 text-center text-gray-500">
+                  <td
+                    colSpan={selectionMode ? "6" : "5"}
+                    className="p-8 text-center text-gray-500"
+                  >
                     Data tidak ditemukan.
                   </td>
                 </tr>
@@ -378,9 +397,13 @@ const HistoryPage = ({
                     onClick={() => selectionMode && toggleSelectItem(item.id)}
                     className={`${
                       isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"
-                    } ${selectionMode && selectedIds.includes(item.id) ? (isDarkMode ? 'bg-blue-900/20' : 'bg-blue-50') : ''} ${
-                      selectionMode ? 'cursor-pointer' : ''
-                    }`}
+                    } ${
+                      selectionMode && selectedIds.includes(item.id)
+                        ? isDarkMode
+                          ? "bg-blue-900/20"
+                          : "bg-blue-50"
+                        : ""
+                    } ${selectionMode ? "cursor-pointer" : ""}`}
                   >
                     {selectionMode && (
                       <td className={`text-center ${tdClass}`}>
@@ -475,36 +498,190 @@ const HistoryPage = ({
         </div>
       </div>
 
-      {/* MODAL DETAIL */}
+      {/* === MODAL DETAIL TRAFO (PERBAIKAN WARNA TOTAL) === */}
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div
-            className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${
-              isDarkMode ? "bg-slate-800 text-white" : "bg-white text-gray-900"
-            }`}
+            className={`w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh] 
+            ${isDarkMode ? "bg-slate-800" : "bg-white"}
+          `}
           >
-            <div className="px-6 py-4 border-b flex justify-between items-center">
-              <h3 className="font-bold">Detail Data</h3>
-              <button onClick={() => setSelectedItem(null)}>
+            {/* Header Modal */}
+            <div
+              className={`flex justify-between items-center p-6 border-b flex-shrink-0
+              ${
+                isDarkMode
+                  ? "bg-slate-800 border-slate-700"
+                  : "bg-white border-gray-100"
+              }
+            `}
+            >
+              <div>
+                <h3
+                  className={`text-xl font-bold flex items-center gap-2 ${
+                    isDarkMode ? "text-white" : "text-gray-800"
+                  }`}
+                >
+                  <Zap className="text-yellow-500" /> Detail Pengujian
+                </h3>
+                <p
+                  className={`text-sm ${
+                    isDarkMode ? "text-gray-400" : "text-gray-500"
+                  }`}
+                >
+                  {selectedItem.nama_trafo} - {selectedItem.lokasi_gi}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedItem(null)}
+                className={`p-2 rounded-full transition ${
+                  isDarkMode
+                    ? "hover:bg-slate-700 text-white"
+                    : "hover:bg-gray-100 text-gray-800"
+                }`}
+              >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-6 grid grid-cols-2 gap-3">
-              {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map((g) => (
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {/* Info Utama (Total Gas & Status) */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {/* Kartu Total Gas */}
                 <div
-                  key={g}
-                  className="flex justify-between border-b border-dashed pb-1"
+                  className={`p-4 rounded-xl border flex flex-col justify-center
+                  ${
+                    isDarkMode
+                      ? "bg-slate-700 border-slate-600"
+                      : "bg-[#F0F9FA] border-[#1B7A8F]/30"
+                  } 
+                `}
                 >
-                  <span className="uppercase text-xs font-bold text-gray-500">
-                    {g}
-                  </span>
-                  <span className="font-mono font-bold">{selectedItem[g]}</span>
+                  <p
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDarkMode ? "text-blue-300" : "text-[#1B7A8F]"
+                    }`}
+                  >
+                    Total Gas (TDCG)
+                  </p>
+                  <p
+                    className={`text-3xl font-black mt-1 ${
+                      isDarkMode ? "text-white" : "text-[#1B7A8F]"
+                    }`}
+                  >
+                    {selectedItem.tdcg || 0}{" "}
+                    <span className="text-sm font-normal opacity-70">ppm</span>
+                  </p>
                 </div>
-              ))}
-              <div className="col-span-2 bg-blue-50 p-2 rounded flex justify-between text-blue-700 font-bold">
-                <span>TDCG</span>
-                <span>{selectedItem.tdcg} ppm</span>
+
+                {/* Kartu Status IEEE */}
+                <div
+                  className={`p-4 rounded-xl border flex flex-col justify-center
+                  ${
+                    isDarkMode
+                      ? "bg-slate-700 border-slate-600"
+                      : "bg-[#F0F9FA] border-[#1B7A8F]/30"
+                  }
+                `}
+                >
+                  <p
+                    className={`text-xs font-bold uppercase tracking-wider ${
+                      isDarkMode ? "text-blue-300" : "text-[#1B7A8F]"
+                    }`}
+                  >
+                    Status IEEE
+                  </p>
+                  <p
+                    className={`text-xl font-bold mt-2 ${
+                      selectedItem.status_ieee?.includes("Normal")
+                        ? isDarkMode
+                          ? "text-green-400"
+                          : "text-green-600"
+                        : isDarkMode
+                          ? "text-red-400"
+                          : "text-red-600"
+                    }`}
+                  >
+                    {selectedItem.status_ieee || "Unknown"}
+                  </p>
+                </div>
               </div>
+
+              <h4
+                className={`font-bold mb-4 pb-2 border-b flex items-center gap-2
+                ${
+                  isDarkMode
+                    ? "text-gray-200 border-slate-700"
+                    : "text-gray-700 border-gray-100"
+                }
+              `}
+              >
+                <FileText size={16} /> Komposisi Gas Terlarut
+              </h4>
+
+              {/* Grid Gas */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
+                  (gas) => (
+                    <div
+                      key={gas}
+                      className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center transition-colors
+                      ${
+                        isDarkMode
+                          ? "bg-slate-700 border-slate-600"
+                          : "bg-white border-gray-200"
+                      }
+                    `}
+                    >
+                      <span
+                        className={`uppercase text-xs font-bold mb-1 ${
+                          isDarkMode ? "text-gray-400" : "text-gray-500"
+                        }`}
+                      >
+                        {gas}
+                      </span>
+                      <span
+                        className={`font-mono text-lg font-bold ${
+                          isDarkMode ? "text-white" : "text-gray-800"
+                        }`}
+                      >
+                        {selectedItem[gas]}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              className={`p-5 flex justify-end gap-3 border-t flex-shrink-0
+              ${
+                isDarkMode
+                  ? "bg-slate-900 border-slate-700"
+                  : "bg-gray-50 border-gray-100"
+              }
+            `}
+            >
+              <button
+                onClick={() => generatePDFFromTemplate(selectedItem)}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
+              >
+                <Download size={18} /> Download Laporan PDF
+              </button>
+              <button
+                onClick={() => setSelectedItem(null)}
+                className={`px-5 py-2.5 border rounded-lg text-sm font-bold transition-all
+                  ${
+                    isDarkMode
+                      ? "bg-slate-800 border-slate-600 text-white hover:bg-slate-700"
+                      : "bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
+                  }
+                `}
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>

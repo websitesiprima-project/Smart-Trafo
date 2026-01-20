@@ -65,13 +65,14 @@ const TrendingPage = ({ isDarkMode, liveData = [] }) => {
     setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Helper format tanggal singkat (DD/MM)
+  // --- PERBAIKAN DISINI: Menambahkan Tahun (numeric) ---
   const formatDate = (dateString) => {
     if (!dateString) return "";
     const date = new Date(dateString);
     return new Intl.DateTimeFormat("id-ID", {
       day: "2-digit",
       month: "short",
+      year: "numeric", // Menampilkan tahun (Contoh: 20 Jan 2024)
     }).format(date);
   };
 
@@ -80,7 +81,8 @@ const TrendingPage = ({ isDarkMode, liveData = [] }) => {
 
     return liveData
       .filter(
-        (d) => d && d.lokasi_gi === selectedGI && d.nama_trafo === selectedTrafo
+        (d) =>
+          d && d.lokasi_gi === selectedGI && d.nama_trafo === selectedTrafo,
       )
       .map((d) => ({
         ...d,
@@ -223,8 +225,8 @@ const TrendingPage = ({ isDarkMode, liveData = [] }) => {
                   color: activeSeries[gas.key]
                     ? gas.color
                     : isDarkMode
-                    ? "#94a3b8"
-                    : "#64748b",
+                      ? "#94a3b8"
+                      : "#64748b",
                 }}
               >
                 {activeSeries[gas.key] ? (
@@ -238,16 +240,12 @@ const TrendingPage = ({ isDarkMode, liveData = [] }) => {
           </div>
         </div>
 
-        {/* PERBAIKAN UTAMA DISINI: 
-            1. Menggunakan inline style untuk height dan minHeight
-            2. Menambahkan minWidth={0} pada ResponsiveContainer
-        */}
         <div style={{ width: "100%", height: "500px", minHeight: "500px" }}>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <ComposedChart
                 data={chartData}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                margin={{ top: 10, right: 30, left: 0, bottom: 20 }} // Tambahkan margin bottom agar label tahun tidak terpotong
               >
                 <defs>
                   <linearGradient id="colorTDCG" x1="0" y1="0" x2="0" y2="1">
@@ -263,8 +261,11 @@ const TrendingPage = ({ isDarkMode, liveData = [] }) => {
                 <XAxis
                   dataKey="dateLabel"
                   stroke={isDarkMode ? "#94a3b8" : "#64748b"}
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 10 }} // Sedikit diperkecil agar muat jika tanggal panjang
                   tickMargin={10}
+                  angle={-15} // Memiringkan label sedikit agar lebih rapi
+                  textAnchor="end"
+                  height={60} // Menambah tinggi area XAxis
                 />
                 <YAxis
                   stroke={isDarkMode ? "#94a3b8" : "#64748b"}
