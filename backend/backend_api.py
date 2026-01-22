@@ -60,7 +60,7 @@ model_trafo = None
 try:
     # Menggunakan Absolute Path agar file pasti ditemukan dimanapun terminal dibuka
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(current_dir, "smart_dga_model.pkl")
+    model_path = os.path.join(current_dir, "smart_dga_model_keygas.pkl")
     
     # Cek apakah file ada
     if not os.path.exists(model_path):
@@ -179,18 +179,54 @@ def analisis_ieee_2019(data: TrafoInput):
     return status_text, ", ".join(diagnosa) if diagnosa else "Parameter Gas Normal"
 
 def analisis_rogers_ratio(data: TrafoInput):
-    r1 = round(data.ch4 / data.h2, 2) if data.h2 > 0 else 0
-    r2 = round(data.c2h2 / data.c2h4, 2) if data.c2h4 > 0 else 0
-    r5 = round(data.c2h4 / data.c2h6, 2) if data.c2h6 > 0 else 0
+    # Ekstrak nilai gas dari input data
+    h2 = data.h2
+    ch4 = data.ch4
+    c2h6 = data.c2h6
+    c2h4 = data.c2h4
+    c2h2 = data.c2h2
+
+    # 1. Hitung Rasio (Cegah pembagian dengan Nol)
+    # R2 = C2H2 / C2H4
+    r2 = c2h2 / c2h4 if c2h4 > 0 else 0
     
-    diagnosis = "Tidak Teridentifikasi"
-    if r2 < 0.1 and r1 > 0.1 and r1 < 1.0 and r5 < 1.0: diagnosis = "Normal"
-    elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0: diagnosis = "Partial Discharge (Corona)"
-    elif r2 > 0.1 and r2 < 3.0 and r1 > 0.1 and r1 < 1.0 and r5 > 3.0: diagnosis = "Overheating > 700°C"
-    elif r2 < 0.1 and r1 > 1.0 and r5 > 1.0 and r5 < 3.0: diagnosis = "Overheating 300-700°C"
-    elif r2 > 0.1 and r2 < 3.0 and r1 > 1.0 and r5 > 3.0: diagnosis = "Arcing (Discharge Energi Tinggi)"
+    # R1 = CH4 / H2
+    r1 = ch4 / h2 if h2 > 0 else 0
+    
+    # R5 = C2H4 / C2H6
+    r5 = c2h4 / c2h6 if c2h6 > 0 else 0
+
+    diagnosis = "Tidak Terdefinisi (Unidentified)"
+
+    # 2. Logika Rogers (Sesuai Standar IEC 60599 / IEEE)
+    
+    # Case 0: Normal
+    if r2 < 0.1 and 0.1 <= r1 <= 1.0 and r5 < 1.0:
+        diagnosis = "Normal"
+    
+    # Case 1: Partial Discharge (PD)
+    elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0:
+        diagnosis = "Partial Discharge (PD)"
         
-    return diagnosis, r1, r2, r5
+    # Case 2: High Energy Arcing
+    elif 0.1 <= r2 <= 3.0 and 0.1 <= r1 <= 1.0 and r5 > 3.0:
+        diagnosis = "Arcing (High Energy)"
+        
+    # Case 3: Low Energy Thermal (< 700 C)
+    elif r2 < 0.1 and 0.1 <= r1 <= 1.0 and 1.0 <= r5 <= 3.0:
+        diagnosis = "Thermal Fault < 700°C"
+        
+    # Case 4: High Energy Thermal (> 700 C)
+    elif r2 < 0.1 and r1 > 1.0 and 1.0 <= r5 <= 3.0:
+        diagnosis = "Thermal Fault > 700°C"
+
+    # Case 5: Low Energy Arcing
+    elif r2 > 3.0 or (0.1 <= r2 <= 3.0 and r1 > 1.0 and r5 > 3.0):
+        diagnosis = "Low Energy Arcing / Sparking"
+
+    # 3. Return Hasil HARUS 4 NILAI (Agar tidak error saat unpacking)
+    diagnosis_str = f"{diagnosis} (R1={r1:.2f}, R2={r2:.2f}, R5={r5:.2f})"
+    return diagnosis_str, r1, r2, r5
 
 def analisis_key_gas(data: TrafoInput):
     gases = {
