@@ -28,6 +28,33 @@ const InputFormPage = ({
   const [dynamicGIs, setDynamicGIs] = useState([]);
   const [dynamicTrafos, setDynamicTrafos] = useState([]);
 
+  // --- FUNGSI UNTUK MENGURUTKAN TRAFO ---
+  const sortTrafos = (trafos) => {
+    return [...trafos].sort((a, b) => {
+      const aName = a.nama_trafo || "";
+      const bName = b.nama_trafo || "";
+
+      // Extract tipe (TD, GT, IBT, dll) dan nomor
+      const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+      const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+
+      if (!aMatch || !bMatch) return aName.localeCompare(bName);
+
+      const aType = aMatch[1].toUpperCase();
+      const bType = bMatch[1].toUpperCase();
+      const aNum = parseInt(aMatch[2], 10);
+      const bNum = parseInt(bMatch[2], 10);
+
+      // Urutan prioritas: TD, GT, IBT, lainnya
+      const typeOrder = { TD: 1, GT: 2, IBT: 3 };
+      const aOrder = typeOrder[aType] || 999;
+      const bOrder = typeOrder[bType] || 999;
+
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return aNum - bNum;
+    });
+  };
+
   // --- LOGIKA FETCH DATA DARI SUPABASE ---
   useEffect(() => {
     const fetchAssets = async () => {
@@ -194,7 +221,7 @@ const InputFormPage = ({
                     >
                       <option value="">- Pilih Trafo -</option>
                       {/* Render Dynamic Trafos berdasarkan GI yang dipilih */}
-                      {dynamicTrafos.map((t, idx) => (
+                      {sortTrafos(dynamicTrafos).map((t, idx) => (
                         <option key={idx} value={t.nama_trafo}>
                           {t.nama_trafo}
                         </option>

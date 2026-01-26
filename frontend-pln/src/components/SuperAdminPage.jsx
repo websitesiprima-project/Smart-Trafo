@@ -71,6 +71,33 @@ const SuperAdminPage = ({ session }) => {
     level_tegangan: "",
   });
 
+  // --- FUNGSI UNTUK MENGURUTKAN TRAFO ---
+  const sortTrafos = (trafos) => {
+    return [...trafos].sort((a, b) => {
+      const aName = a.nama_trafo || "";
+      const bName = b.nama_trafo || "";
+
+      // Extract tipe (TD, GT, IBT, dll) dan nomor
+      const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+      const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+
+      if (!aMatch || !bMatch) return aName.localeCompare(bName);
+
+      const aType = aMatch[1].toUpperCase();
+      const bType = bMatch[1].toUpperCase();
+      const aNum = parseInt(aMatch[2], 10);
+      const bNum = parseInt(bMatch[2], 10);
+
+      // Urutan prioritas: TD, GT, IBT, lainnya
+      const typeOrder = { TD: 1, GT: 2, IBT: 3 };
+      const aOrder = typeOrder[aType] || 999;
+      const bOrder = typeOrder[bType] || 999;
+
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return aNum - bNum;
+    });
+  };
+
   // --- 1. FETCH DATA ASET ---
   const fetchAssets = async () => {
     try {
@@ -219,11 +246,13 @@ const SuperAdminPage = ({ session }) => {
     }
   };
 
-  const filteredAssets = assetList.filter(
-    (item) =>
-      item.nama_trafo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.lokasi_gi.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.merk.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAssets = sortTrafos(
+    assetList.filter(
+      (item) =>
+        item.nama_trafo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.lokasi_gi.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.merk.toLowerCase().includes(searchTerm.toLowerCase())
+    )
   );
 
   return (

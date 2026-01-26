@@ -27,6 +27,7 @@ export const supabase = isConfigValid
         onAuthStateChange: () => ({
           data: { subscription: { unsubscribe: () => {} } },
         }),
+        signInWithPassword: async () => ({ data: null, error: new Error("Supabase not configured") }),
         signOut: async () => {},
       },
     };
