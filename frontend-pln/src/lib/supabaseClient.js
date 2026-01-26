@@ -3,19 +3,25 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 
-// Cek apakah URL dan Key ada
+// Cek apakah config ada (Safe Check)
 const isConfigValid = supabaseUrl && supabaseKey;
 
 if (!isConfigValid) {
-  console.warn(
-    "⚠️ PERINGATAN: Supabase URL/Key belum disetting di .env. Aplikasi berjalan dalam mode terbatas."
-  );
+  console.error("⚠️ SUPABASE CONFIG MISSING! Cek file .env Anda.");
 }
 
+// Buat Client atau Dummy Client jika config kosong
 export const supabase = isConfigValid
   ? createClient(supabaseUrl, supabaseKey)
   : {
-      // DUMMY CLIENT (Agar aplikasi tidak crash saat tidak ada koneksi)
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: null }),
+            order: () => ({ data: [] }),
+          }),
+        }),
+      }),
       auth: {
         getSession: async () => ({ data: { session: null }, error: null }),
         onAuthStateChange: () => ({
@@ -23,15 +29,4 @@ export const supabase = isConfigValid
         }),
         signOut: async () => {},
       },
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            single: async () => ({ data: null, error: null }),
-            order: () => ({ data: [], error: null }),
-          }),
-          order: async () => ({ data: [], error: null }),
-        }),
-        insert: async () => ({ error: null }),
-        delete: () => ({ eq: async () => ({ error: null }) }),
-      }),
     };

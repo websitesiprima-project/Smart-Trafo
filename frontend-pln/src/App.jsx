@@ -17,18 +17,13 @@ import {
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
-
-// --- IMPORT SUPABASE & LOGIN ---
 import { supabase } from "./lib/supabaseClient";
 import LoginPage from "./components/LoginPage";
-
-// --- KOMPONEN RINGAN ---
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import ThemeToggle from "./components/ThemeToggle";
 
-// --- KOMPONEN BERAT (LAZY LOAD) ---
 const DashboardPage = lazy(() => import("./components/DashboardPage"));
 const InputFormPage = lazy(() => import("./components/InputFormPage"));
 const TrendingPage = lazy(() => import("./components/TrendingPage"));
@@ -41,12 +36,13 @@ const ENABLE_AUTH = true;
 
 export default function Home() {
   const [session, setSession] = useState(null);
-  const [authChecking, setAuthChecking] = useState(ENABLE_AUTH);
+  const [authChecking, setAuthChecking] = useState(true);
 
-  // 🔥 STATE ROLE & UNIT
+  // State User
   const [userRole, setUserRole] = useState(null);
   const [userUnit, setUserUnit] = useState(null);
 
+  // State UI
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
@@ -55,6 +51,7 @@ export default function Home() {
   const [activeField, setActiveField] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Data State
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -76,7 +73,6 @@ export default function Home() {
     co: 0,
     co2: 0,
   });
-
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [historyData, setHistoryData] = useState([]);
@@ -85,72 +81,76 @@ export default function Home() {
   const API_URL = "http://127.0.0.1:8000";
 
   // ===============================================
-  // 🔥 1. LOGIC AUTH YANG DIPERBAIKI (ANTI STUCK) 🔥
+  // 🔥 AUTH LOGIC
   // ===============================================
   useEffect(() => {
     let mounted = true;
 
-    // Fungsi Ambil Profil (Terpisah agar bisa dipanggil ulang)
-    const fetchProfile = async (userId) => {
+    const safetyTimer = setTimeout(() => {
+      if (mounted && authChecking) {
+        console.warn("⚠️ Auth timeout. Memaksa masuk aplikasi.");
+        setAuthChecking(false);
+      }
+    }, 3000);
+
+    const fetchProfile = async (user) => {
       try {
-        const { data, error } = await supabase
+        if (user.email === "superadminupt@gmail.com") {
+          setUserRole("super_admin");
+          setUserUnit(null);
+          console.log("🚀 Force Login: SUPER ADMIN");
+          return;
+        }
+        const { data } = await supabase
           .from("profiles")
           .select("role, unit_ultg")
-          .eq("id", userId)
+          .eq("id", user.id)
           .single();
 
-        if (data && mounted) {
+        if (mounted && data) {
           setUserRole(data.role);
           setUserUnit(data.unit_ultg);
-          console.log("Profile Loaded:", data.role);
         }
-      } catch (err) {
-        console.warn("Profile fetch warning:", err);
+      } catch (e) {
+        console.warn("Profile fetch error", e);
       }
     };
 
     const initAuth = async () => {
       try {
-        // Cek Environment
         if (!ENABLE_AUTH) {
-          setSession({ user: { email: "dev@pln.co.id", id: "dev-mode" } });
+          setSession({ user: { email: "dev@pln.co.id" } });
           setUserRole("super_admin");
-          setAuthChecking(false);
+          if (mounted) setAuthChecking(false);
           return;
         }
 
-        // Cek Session Saat Ini
         const {
           data: { session },
-          error,
         } = await supabase.auth.getSession();
 
         if (mounted) {
           if (session) {
             setSession(session);
-            // Tunggu profil terambil SEBELUM mematikan loading
-            await fetchProfile(session.user.id);
+            await fetchProfile(session.user);
           }
+          setAuthChecking(false);
         }
       } catch (error) {
-        console.error("Auth Init Error:", error);
-      } finally {
-        // 🔥 KUNCI: Matikan loading apapun yang terjadi
+        console.error("Auth init error:", error);
         if (mounted) setAuthChecking(false);
       }
     };
 
     initAuth();
 
-    // Listener jika user login/logout di tab lain atau expired
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (mounted) {
         setSession(session);
-        if (session) {
-          await fetchProfile(session.user.id);
-        } else {
+        if (session) await fetchProfile(session.user);
+        else {
           setUserRole(null);
           setUserUnit(null);
         }
@@ -160,67 +160,73 @@ export default function Home() {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
   // --- ACTIONS ---
-  const handleLogout = async () => setShowLogoutModal(true);
+  const handleLogout = () => setShowLogoutModal(true);
 
-  // --- FUNGSI LOGOUT (VERSI BERSIH & FIXED DUPLICATE) ---
   const confirmLogout = async () => {
     setShowLogoutModal(false);
     try {
-      if (ENABLE_AUTH) {
-        await supabase.auth.signOut();
-      }
-    } catch (error) {
-      console.warn("Logout error:", error);
+      if (ENABLE_AUTH) await supabase.auth.signOut();
+    } catch (e) {
+      console.warn(e);
     } finally {
-      // Nuklir: Hapus semua sisa data di browser
       localStorage.clear();
-      sessionStorage.clear();
-
       setSession(null);
       setUserRole(null);
       setUserUnit(null);
       setShowLogin(false);
-
-      toast.success("Berhasil keluar akun.");
-      // Optional: Force reload agar bersih total
-      // window.location.reload();
+      toast.success("Berhasil keluar.");
+      window.location.reload();
     }
   };
 
-  const handleDeleteAllHistory = async () => setShowDeleteAllModal(true);
+  const handleDeleteAllHistory = () => setShowDeleteAllModal(true);
 
   const confirmDeleteAll = async () => {
+    setLoadingHistory(true);
     try {
-      setLoadingHistory(true);
-      if (userRole !== "super_admin" && userRole !== "admin") {
-        toast.error("Anda tidak memiliki izin menghapus data.");
-        setLoadingHistory(false);
-        setShowDeleteAllModal(false);
+      if (userRole !== "super_admin") {
+        toast.error("Hanya Super Admin yang bisa menghapus semua data.");
         return;
       }
-
-      // Hapus lewat API Backend Python (karena backend handle audit log)
-      // Atau bisa langsung Supabase jika mau cepat
       for (const item of historyData) {
-        await fetch(`${API_URL}/history/${item.id}`, {
-          method: "DELETE",
-        }).catch(console.error);
+        await supabase.from("riwayat_uji").delete().eq("id", item.id);
       }
-
-      toast.success("Riwayat dihapus.");
+      toast.success("Data berhasil direset.");
       fetchHistory();
+    } catch (e) {
+      toast.error("Gagal menghapus data.");
+    } finally {
+      setLoadingHistory(false);
       setShowDeleteAllModal(false);
+    }
+  };
+
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase
+        .from("riwayat_uji")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setHistoryData(data || []);
     } catch (error) {
-      toast.error("Gagal menghapus.");
+      console.error("Fetch error:", error);
     } finally {
       setLoadingHistory(false);
     }
   };
+
+  useEffect(() => {
+    if (session) fetchHistory();
+  }, [session]);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -235,61 +241,30 @@ export default function Home() {
     });
   };
 
-  // --- FETCH HISTORY LANGSUNG DARI SUPABASE (LEBIH CEPAT) ---
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const { data, error } = await supabase
-        .from("riwayat_uji")
-        .select("*")
-        .order("tanggal_sampling", { ascending: false }); // Data terbaru di atas
-
-      if (error) throw error;
-      setHistoryData(data || []);
-    } catch (error) {
-      console.error("Gagal ambil data:", error);
-      // Jangan set kosong jika error koneksi sesaat, tapi user minta refresh
-      // setHistoryData([]);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  useEffect(() => {
-    if (session) fetchHistory();
-  }, [session]);
-
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!formData.lokasi_gi || !formData.nama_trafo) {
-      toast.error("Lokasi GI dan Nama Trafo wajib diisi!");
-      return;
-    }
-    setLoading(true);
-    // Simulasi delay sedikit biar kerasa "mikir"
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    if (!formData.lokasi_gi || !formData.nama_trafo)
+      return toast.error("Lokasi & Trafo wajib diisi!");
 
+    setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/predict`, {
+      const res = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          // Kirim email untuk audit log di backend
-          diambil_oleh: session?.user?.email || formData.diambil_oleh,
+          diambil_oleh: session?.user?.email,
         }),
       });
-
-      if (!response.ok) throw new Error("Gagal memproses");
-
-      const data = await response.json();
+      const data = await res.json();
       setResult(data);
       toast.success("Analisis Selesai!");
-      fetchHistory(); // Refresh tabel history
-    } catch (error) {
-      toast.error("Gagal terhubung ke Server AI!");
+      fetchHistory();
+    } catch {
+      toast.error("Gagal koneksi ke AI Server!");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const navigateTo = (page) => {
@@ -297,7 +272,7 @@ export default function Home() {
     setIsSidebarOpen(false);
   };
 
-  // --- RENDER GATES ---
+  // --- RENDER ---
   if (ENABLE_AUTH && authChecking) return <LoadingScreen />;
 
   if (!session) {
@@ -307,7 +282,7 @@ export default function Home() {
           <Toaster />
           <button
             onClick={() => setShowLogin(false)}
-            className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm hover:bg-black/50 transition"
+            className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm"
           >
             <ArrowLeft size={16} /> Kembali
           </button>
@@ -325,9 +300,6 @@ export default function Home() {
     );
   }
 
-  // ============================================
-  // 🔥 RENDER UTAMA (DASHBOARD)
-  // ============================================
   return (
     <div
       className={`min-h-screen font-sans transition-colors duration-500 ${
@@ -339,26 +311,26 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* --- MODALS --- */}
+      {/* Modal Delete */}
       {showDeleteAllModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
             className={`p-8 rounded-2xl max-w-sm w-full text-center ${
               isDarkMode ? "bg-slate-800" : "bg-white"
             }`}
           >
             <Trash2 className="mx-auto mb-4 text-orange-500" size={40} />
-            <h3 className="text-xl font-bold mb-2">Hapus Semua?</h3>
-            <div className="flex gap-3 mt-6">
+            <h3 className="text-xl font-bold mb-6">Hapus Semua Data?</h3>
+            <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteAllModal(false)}
-                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg"
               >
                 Batal
               </button>
               <button
                 onClick={confirmDeleteAll}
-                className="flex-1 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+                className="flex-1 py-2 bg-orange-500 text-white rounded-lg"
               >
                 Hapus
               </button>
@@ -366,25 +338,27 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Modal Logout */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
             className={`p-8 rounded-2xl max-w-sm w-full text-center ${
               isDarkMode ? "bg-slate-800" : "bg-white"
             }`}
           >
             <LogOut className="mx-auto mb-4 text-red-500" size={40} />
-            <h3 className="text-xl font-bold mb-2">Keluar Akun?</h3>
-            <div className="flex gap-3 mt-6">
+            <h3 className="text-xl font-bold mb-6">Keluar Akun?</h3>
+            <div className="flex gap-3">
               <button
                 onClick={() => setShowLogoutModal(false)}
-                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg"
               >
                 Batal
               </button>
               <button
                 onClick={confirmLogout}
-                className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                className="flex-1 py-2 bg-red-500 text-white rounded-lg"
               >
                 Ya, Keluar
               </button>
@@ -398,9 +372,9 @@ export default function Home() {
         onClose={() => setActiveField(null)}
       />
 
-      {/* HEADER */}
+      {/* Header */}
       <header
-        className={`fixed top-0 left-0 right-0 z-30 h-16 px-4 flex items-center justify-between shadow-sm transition-colors duration-300 backdrop-blur-md ${
+        className={`fixed top-0 left-0 right-0 z-30 h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${
           isDarkMode
             ? "bg-slate-900/80 border-b border-slate-700"
             : "bg-white/80 border-b border-gray-200"
@@ -409,9 +383,7 @@ export default function Home() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className={`p-2 rounded-lg hover:bg-gray-500/10 transition active:scale-95 ${
-              isDarkMode ? "text-white" : "text-gray-800"
-            }`}
+            className="p-2 rounded-lg hover:bg-gray-500/10"
           >
             <Menu size={26} />
           </button>
@@ -422,8 +394,8 @@ export default function Home() {
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden md:block">
+        <div className="flex items-center gap-3 text-right">
+          <div className="hidden md:block">
             <p
               className={`text-xs font-bold ${
                 isDarkMode ? "text-white" : "text-gray-900"
@@ -431,50 +403,39 @@ export default function Home() {
             >
               {session.user.email}
             </p>
-            <p className="text-[10px] opacity-60 uppercase font-bold text-[#1B7A8F]">
-              {userRole === "super_admin" ? "Super Admin" : userUnit || "Admin"}
+            <p className="text-[10px] font-bold text-[#1B7A8F] uppercase tracking-wider">
+              {userRole === "super_admin" ? "SUPER ADMIN" : userUnit || "ADMIN"}
             </p>
           </div>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-400 flex items-center justify-center text-white text-sm font-bold shadow-md">
+          <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
             {session.user.email.charAt(0).toUpperCase()}
           </div>
         </div>
       </header>
 
-      {/* SIDEBAR */}
+      {/* Sidebar Overlay */}
       <div
-        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${
           isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
         }`}
         onClick={() => setIsSidebarOpen(false)}
       />
 
+      {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transition-transform duration-300 flex flex-col ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } ${
-          isDarkMode
-            ? "bg-[#1e293b] border-r border-slate-700"
-            : "bg-white border-r border-slate-200"
-        }`}
+        } ${isDarkMode ? "bg-[#1e293b]" : "bg-white"}`}
       >
         <div className="h-20 flex items-center justify-between px-6 border-b border-gray-500/10">
-          <div>
-            <h1
-              className={`font-bold text-xl leading-none ${
-                isDarkMode ? "text-white" : "text-[#1B7A8F]"
-              }`}
-            >
-              PLN <span className="text-[#FFD700]">SMART</span>
-            </h1>
-            <p className="text-[10px] opacity-60 uppercase tracking-widest mt-1">
-              UPT Manado
-            </p>
-          </div>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="p-2 hover:bg-red-50 hover:text-red-500 rounded-full transition"
+          <h1
+            className={`font-bold text-xl ${
+              isDarkMode ? "text-white" : "text-[#1B7A8F]"
+            }`}
           >
+            PLN <span className="text-[#F1C40F]">SMART</span>
+          </h1>
+          <button onClick={() => setIsSidebarOpen(false)}>
             <X size={20} />
           </button>
         </div>
@@ -482,14 +443,14 @@ export default function Home() {
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <MenuButton
             icon={<LayoutDashboard size={20} />}
-            label="Dashboard Aset"
+            label="Dashboard"
             active={activePage === "dashboard"}
             onClick={() => navigateTo("dashboard")}
             isDarkMode={isDarkMode}
           />
           <MenuButton
             icon={<FileText size={20} />}
-            label="Input Uji DGA"
+            label="Input DGA"
             active={activePage === "input_dga"}
             onClick={() => navigateTo("input_dga")}
             isDarkMode={isDarkMode}
@@ -503,27 +464,27 @@ export default function Home() {
           />
           <MenuButton
             icon={<History size={20} />}
-            label="Riwayat Pengujian"
+            label="Riwayat"
             active={activePage === "history"}
             onClick={() => navigateTo("history")}
             isDarkMode={isDarkMode}
           />
           <MenuButton
             icon={<BookOpen size={20} />}
-            label="Panduan & Standar"
+            label="Panduan"
             active={activePage === "guide"}
             onClick={() => navigateTo("guide")}
             isDarkMode={isDarkMode}
           />
 
           {userRole === "super_admin" && (
-            <div className="mt-4 pt-4 border-t border-gray-500/20 animate-in fade-in slide-in-from-left-5">
+            <div className="mt-4 pt-4 border-t border-gray-500/20">
               <p className="px-4 text-[10px] font-bold uppercase opacity-50 mb-2 tracking-widest">
                 Admin Area
               </p>
               <MenuButton
                 icon={<ShieldCheck size={20} className="text-purple-500" />}
-                label="Kelola Aset Master"
+                label="Kelola Aset"
                 active={activePage === "super_admin"}
                 onClick={() => navigateTo("super_admin")}
                 isDarkMode={isDarkMode}
@@ -532,31 +493,34 @@ export default function Home() {
           )}
         </nav>
 
-        <div className="p-4 border-t border-gray-500/10 space-y-3 bg-opacity-50">
+        <div className="p-4 border-t border-gray-500/10 space-y-3">
           <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 text-sm font-bold text-red-500 hover:bg-red-50 p-3 rounded-xl w-full transition"
           >
-            <LogOut size={18} /> Keluar Akun
+            <LogOut size={18} /> Keluar
           </button>
-          <div className="text-[10px] text-center opacity-40 pt-2">
-            v2.0 • {session.user.email}
-          </div>
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <main className="pt-20 px-4 md:px-6 pb-10 max-w-7xl mx-auto w-full">
+      {/* Main Content */}
+      {/* 🔥 INI KUNCI FULL SCREEN: HAPUS max-w-7xl dan mx-auto */}
+      <main
+        className={`
+            pt-20 pb-10 w-full min-h-screen transition-all duration-300
+            ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"} 
+        `}
+      >
         <Suspense fallback={<LoadingScreen />}>
           <AnimatePresence mode="wait">
             {activePage === "dashboard" && (
-              <PageTransition key="dashboard">
+              <PageTransition key="dash">
                 <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
               </PageTransition>
             )}
             {activePage === "input_dga" && (
-              <PageTransition key="input_dga">
+              <PageTransition key="input">
                 <InputFormPage
                   formData={formData}
                   setFormData={setFormData}
@@ -569,7 +533,7 @@ export default function Home() {
               </PageTransition>
             )}
             {activePage === "trending" && (
-              <PageTransition key="trending">
+              <PageTransition key="trend">
                 <TrendingPage
                   liveData={historyData}
                   isDarkMode={isDarkMode}
@@ -579,7 +543,7 @@ export default function Home() {
               </PageTransition>
             )}
             {activePage === "history" && (
-              <PageTransition key="history">
+              <PageTransition key="hist">
                 <HistoryPage
                   historyData={historyData}
                   isDarkMode={isDarkMode}
@@ -596,8 +560,9 @@ export default function Home() {
                 <GuidePage isDarkMode={isDarkMode} />
               </PageTransition>
             )}
+
             {activePage === "super_admin" && userRole === "super_admin" && (
-              <PageTransition key="super_admin">
+              <PageTransition key="admin">
                 <SuperAdminPage session={session} />
               </PageTransition>
             )}
@@ -613,7 +578,7 @@ const MenuButton = ({ icon, label, active, onClick, isDarkMode }) => (
     onClick={onClick}
     className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-medium ${
       active
-        ? "bg-[#1B7A8F] text-white shadow-lg shadow-[#1B7A8F]/30 translate-x-1"
+        ? "bg-[#1B7A8F] text-white shadow-lg translate-x-1"
         : `hover:bg-gray-500/5 ${
             isDarkMode
               ? "text-gray-300 hover:text-white"

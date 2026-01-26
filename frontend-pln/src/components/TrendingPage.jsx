@@ -43,7 +43,13 @@ const ULTG_MAPPING = {
     "GI Paniki",
     "GI Tanjung Merah",
   ],
-  Kotamobagu: ["GI Kotamobagu", "GI Lolak", "GI Boroko", "GI Otam"],
+  Kotamobagu: [
+    "GI Kotamobagu",
+    "GI Lolak",
+    "GI Boroko",
+    "GI Otam",
+    "PLTU SULUT 1",
+  ],
   Gorontalo: [
     "GI Gorontalo",
     "GI Isimu",

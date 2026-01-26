@@ -391,6 +391,61 @@ def get_history():
         return supabase.table("riwayat_uji").select("*").order("id", desc=True).limit(1000).execute().data
     except: return []
 
+# --- 5. MANAGEMEN ASET (GET & DELETE) ---
+@app.get("/assets")
+def get_all_assets():
+    if not db_active or not supabase: return []
+    try:
+        # Ambil semua data aset trafo, urutkan dari yang terbaru
+        response = supabase.table("assets_trafo").select("*").order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching assets: {e}")
+        return []
+
+@app.delete("/assets/delete/{asset_id}")
+def delete_asset(asset_id: int, user_email: str):
+    if not db_active or not supabase: return {"status": "Error", "msg": "DB Offline"}
+    
+    try:
+        # 1. Validasi Super Admin
+        user_check = supabase.table("profiles").select("role").eq("email", user_email).execute()
+        
+        current_role = "user"
+        if user_check.data and isinstance(user_check.data, list) and len(user_check.data) > 0:
+            user_data = user_check.data[0]
+            if isinstance(user_data, dict):
+                current_role = user_data.get("role", "user")
+        
+        if current_role != 'super_admin':
+            return {"status": "Gagal", "msg": "Hanya Super Admin yang boleh menghapus aset master!"}
+
+        # 2. Ambil data sebelum dihapus (untuk log)
+        # 🔥 FIX PYLANCE: Pastikan tipe data sebelum akses index
+        nama_aset = "Unknown Asset"
+        asset_data = supabase.table("assets_trafo").select("*").eq("id", asset_id).execute()
+        
+        if asset_data.data and isinstance(asset_data.data, list) and len(asset_data.data) > 0:
+            first_asset = asset_data.data[0]
+            if isinstance(first_asset, dict):
+                nama_aset = f"{first_asset.get('nama_trafo', 'Unknown')} ({first_asset.get('lokasi_gi', 'Unknown')})"
+
+        # 3. Hapus Aset
+        supabase.table("assets_trafo").delete().eq("id", asset_id).execute()
+
+        # 4. Catat Audit Log
+        supabase.table("audit_logs").insert({
+            "user_email": user_email,
+            "action": "HAPUS_TRAFO",
+            "details": f"Menghapus Master Aset: {nama_aset}"
+        }).execute()
+
+        return {"status": "Sukses", "msg": f"Aset {nama_aset} berhasil dihapus permanen."}
+
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+
 @app.delete("/history/{item_id}")
 def delete_history_item(item_id: int): # Ganti nama fungsi biar unik
     if db_active and supabase: 
