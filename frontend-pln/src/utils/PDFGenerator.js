@@ -466,6 +466,97 @@ export const generatePDFFromTemplate = (data) => {
     });
 
     // ============================================
+    // HALAMAN KEDUA: KESIMPULAN VOLTY ANALYSIS
+    // ============================================
+    if (data.hasil_ai && data.hasil_ai.trim() !== "" && data.hasil_ai !== "AI sedang menganalisis...") {
+      doc.addPage();
+      
+      // Header Halaman Kedua
+      doc.setFillColor(0, 139, 139);
+      doc.rect(0, 0, 210, 35, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text("KESIMPULAN ANALISIS VOLTY", 105, 15, { align: "center" });
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text("AI-Powered Transformer Health Assessment", 105, 23, { align: "center" });
+      
+      // Info Trafo (Compact)
+      doc.setFontSize(9);
+      doc.text(`${data.lokasi_gi} | ${data.nama_trafo} | ${data.tanggal_sampling || "-"}`, 105, 30, { align: "center" });
+      
+      // Konten Kesimpulan
+      currentY = 45;
+      
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 139, 139);
+      doc.text("KESIMPULAN & REKOMENDASI by VOLTY AI ASSISTANT", 14, currentY);
+      currentY += 8;
+      
+      // Format dan tampilkan kesimpulan
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(50, 50, 50);
+      
+      // Split text menjadi paragraf dan handle line breaks
+      const kesimpulan = data.hasil_ai
+        .replace(/\\n/g, '\n')
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '•')
+        .trim();
+      
+      const maxWidth = 175;
+      const lineHeight = 6;
+      const lines = doc.splitTextToSize(kesimpulan, maxWidth);
+      
+      lines.forEach((line) => {
+        if (currentY + lineHeight > 280) {
+          doc.addPage();
+          currentY = 20;
+        }
+        
+        // Bold untuk judul bagian (yang dimulai dengan "###" atau "##")
+        if (line.startsWith('###') || line.startsWith('##')) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(11);
+          doc.setTextColor(0, 100, 100);
+          doc.text(line.replace(/###|##/g, '').trim(), 14, currentY);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.setTextColor(50, 50, 50);
+        } else if (line.trim().startsWith('•')) {
+          // Bullet points
+          doc.text('  ' + line, 14, currentY);
+        } else if (line.trim() !== '') {
+          doc.text(line, 14, currentY);
+        }
+        
+        currentY += lineHeight;
+      });
+      
+      // Footer halaman kedua
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont("helvetica", "italic");
+      doc.text(
+        "Analisis ini dihasilkan oleh VOLTY AI Assistant - PLN UPT Manado",
+        105,
+        285,
+        { align: "center" }
+      );
+      doc.text(
+        `Generated: ${new Date().toLocaleString('id-ID')}`,
+        105,
+        290,
+        { align: "center" }
+      );
+    }
+
+    // ============================================
     // SAVE PDF
     // ============================================
     
@@ -713,6 +804,99 @@ export const generatePDFBlob = (data) => {
       tableWidth: 160,
       margin: { left: 14 },
     });
+    
+    // ============================================
+    // HALAMAN KEDUA: KESIMPULAN VOLTY ANALYSIS
+    // ============================================
+    if (data.hasil_ai && data.hasil_ai.trim() !== "" && data.hasil_ai !== "AI sedang menganalisis...") {
+      doc.addPage();
+      
+      // Header Halaman Kedua
+      doc.setFillColor(0, 139, 139);
+      doc.rect(0, 0, 210, 35, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text("KESIMPULAN ANALISIS VOLTY", 105, 15, { align: "center" });
+      
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text("AI-Powered Transformer Health Assessment", 105, 23, { align: "center" });
+      
+      // Info Trafo (Compact)
+      doc.setFontSize(9);
+      doc.text(`${data.lokasi_gi} | ${data.nama_trafo} | ${data.tanggal_sampling || "-"}`, 105, 30, { align: "center" });
+      
+      // Konten Kesimpulan
+      currentY = 45;
+      
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 139, 139);
+      doc.text("KESIMPULAN & REKOMENDASI by VOLTY AI ASSISTANT", 14, currentY);
+      currentY += 8;
+      
+      // Format dan tampilkan kesimpulan
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(50, 50, 50);
+      
+      // Split text menjadi paragraf dan handle line breaks
+      const kesimpulan = data.hasil_ai
+        .replace(/\\n/g, '\n')
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '•')
+        .trim();
+      
+      const maxWidth = 175;
+      const lineHeight = 6;
+      const lines = doc.splitTextToSize(kesimpulan, maxWidth);
+      
+      let contentHeight = 0;
+      lines.forEach((line, index) => {
+        if (currentY + lineHeight > 280) {
+          doc.addPage();
+          currentY = 20;
+        }
+        
+        // Bold untuk judul bagian (yang dimulai dengan "###" atau "##")
+        if (line.startsWith('###') || line.startsWith('##')) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(11);
+          doc.setTextColor(0, 100, 100);
+          doc.text(line.replace(/###|##/g, '').trim(), 14, currentY);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(10);
+          doc.setTextColor(50, 50, 50);
+        } else if (line.trim().startsWith('•')) {
+          // Bullet points
+          doc.text('  ' + line, 14, currentY);
+        } else if (line.trim() !== '') {
+          doc.text(line, 14, currentY);
+        }
+        
+        currentY += lineHeight;
+        contentHeight += lineHeight;
+      });
+      
+      // Footer halaman kedua
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont("helvetica", "italic");
+      doc.text(
+        "Analisis ini dihasilkan oleh VOLTY AI Assistant - PLN UPT Manado",
+        105,
+        285,
+        { align: "center" }
+      );
+      doc.text(
+        `Generated: ${new Date().toLocaleString('id-ID')}`,
+        105,
+        290,
+        { align: "center" }
+      );
+    }
     
     return doc.output('blob');
   } catch (error) {
