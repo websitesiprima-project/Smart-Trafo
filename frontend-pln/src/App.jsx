@@ -529,6 +529,8 @@ export default function Home() {
                   result={result}
                   isDarkMode={isDarkMode}
                   isLoading={loading}
+                  userRole={userRole}
+                  userUnit={userUnit}
                 />
               </PageTransition>
             )}

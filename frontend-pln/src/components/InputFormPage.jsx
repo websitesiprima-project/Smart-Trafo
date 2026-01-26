@@ -15,6 +15,42 @@ import DuvalPentagon from "./DuvalPentagon";
 import { allGIs, trafoDatabase } from "../data/assetData";
 import { supabase } from "../lib/supabaseClient";
 
+// --- MAPPING ULTG ---
+const ULTG_MAPPING = {
+  Lopana: [
+    "GI Lopana",
+    "GI Amurang",
+    "GI Tumpaan",
+    "GI Motoling",
+    "GI Ratahan",
+    "Lopana",
+    "Amurang",
+  ],
+  Sawangan: [
+    "GI Sawangan",
+    "GI Teling",
+    "GI Bitung",
+    "GI Likupang",
+    "GI Likupang New",
+    "GI Paniki",
+    "GI Tanjung Merah",
+  ],
+  Kotamobagu: [
+    "GI Kotamobagu",
+    "GI Lolak",
+    "GI Boroko",
+    "GI Otam",
+    "PLTU SULUT 1",
+  ],
+  Gorontalo: [
+    "GI Gorontalo",
+    "GI Isimu",
+    "GI Marisa",
+    "GI Botupingge",
+    "GI Kwandang",
+  ],
+};
+
 const InputFormPage = ({
   formData,
   handleChange,
@@ -23,10 +59,15 @@ const InputFormPage = ({
   result,
   isDarkMode,
   isLoading,
+  userRole,
+  userUnit,
 }) => {
   // --- STATE UNTUK GI & TRAFO DINAMIS ---
   const [dynamicGIs, setDynamicGIs] = useState([]);
   const [dynamicTrafos, setDynamicTrafos] = useState([]);
+  
+  // --- LOGIKA UTAMA: APAKAH DIA SUPER ADMIN? ---
+  const isSuperAdmin = userRole === "super_admin" || !userUnit;
 
   // --- FUNGSI UNTUK MENGURUTKAN TRAFO ---
   const sortTrafos = (trafos) => {
@@ -55,7 +96,7 @@ const InputFormPage = ({
     });
   };
 
-  // --- LOGIKA FETCH DATA DARI SUPABASE ---
+  // --- LOGIKA FETCH DATA DARI SUPABASE dengan FILTER ULTG ---
   useEffect(() => {
     const fetchAssets = async () => {
       // Ambil data unik untuk lokasi_gi
@@ -65,13 +106,31 @@ const InputFormPage = ({
 
       if (data) {
         // Filter duplikat GI
-        const uniqueGIs = [...new Set(data.map((item) => item.lokasi_gi))];
-        setDynamicGIs(uniqueGIs);
+        let uniqueGIs = [...new Set(data.map((item) => item.lokasi_gi))]
+          .filter(Boolean)
+          .sort();
+        
+        // JIKA SUPER ADMIN: TAMPILKAN SEMUA
+        if (isSuperAdmin) {
+          setDynamicGIs(uniqueGIs);
+        } else {
+          // JIKA ADMIN UNIT: FILTER SESUAI WILAYAH
+          if (userUnit && ULTG_MAPPING[userUnit]) {
+            const allowed = ULTG_MAPPING[userUnit];
+            const filteredGIs = uniqueGIs.filter((gi) =>
+              allowed.some((a) => gi.toLowerCase().includes(a.toLowerCase()))
+            );
+            setDynamicGIs(filteredGIs);
+          } else {
+            // Fallback: Jika punya unit tapi tidak ada di mapping, return kosong (safety)
+            setDynamicGIs([]);
+          }
+        }
       }
     };
 
     fetchAssets();
-  }, []);
+  }, [userRole, userUnit, isSuperAdmin]);
 
   // --- LOGIKA LOAD TRAFO SAAT GI DIPILIH ---
   useEffect(() => {
