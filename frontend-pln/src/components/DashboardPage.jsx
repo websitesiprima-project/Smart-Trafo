@@ -244,6 +244,33 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
   const cardBg = isDarkMode
     ? "bg-[#1e293b] border-slate-700"
     : "bg-white border-slate-200";
+  // --- MAP BOUNDS: HITUNG DARI `allGIs` UNTUK MEMBATASI VIEW ---
+  // Adjust `BOUNDS_PADDING_FACTOR` di sini untuk melonggarkan/mengetatkan padding
+  const BOUNDS_PADDING_FACTOR = 0.25; // default 0.10 sebelumnya, tingkatkan untuk lebih longgar
+
+  const mapBounds = React.useMemo(() => {
+    if (!Array.isArray(allGIs) || allGIs.length === 0) return null;
+    const lats = allGIs
+      .map((g) => Number(g.lat))
+      .filter((n) => Number.isFinite(n));
+    const lngs = allGIs
+      .map((g) => Number(g.lng))
+      .filter((n) => Number.isFinite(n));
+    if (lats.length === 0 || lngs.length === 0) return null;
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    // Tambah padding supaya marker tidak tepat di tepi
+    const latPad = (maxLat - minLat) * BOUNDS_PADDING_FACTOR || 5;
+    const lngPad = (maxLng - minLng) * BOUNDS_PADDING_FACTOR || 5;
+
+    return [
+      [minLat - latPad, minLng - lngPad],
+      [maxLat + latPad, maxLng + lngPad],
+    ];
+  }, []);
 
   return (
     <div className="space-y-6 pb-20">
@@ -333,9 +360,12 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
           <MapContainer
             center={[0.8, 124.5]}
             zoom={8}
-            minZoom={7}
+            minZoom={7.5}
             maxZoom={18}
             style={{ height: "100%", width: "100%" }}
+            bounds={mapBounds || undefined}
+            maxBounds={mapBounds || undefined}
+            maxBoundsViscosity={0.05}
           >
             <TileLayer
               attribution="&copy; PLN"
