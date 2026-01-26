@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Trash2,
   Search,
@@ -16,6 +16,8 @@ import {
   Square,
   Zap,
   ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,27 +28,84 @@ import DuvalPentagon from "./DuvalPentagon";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
+// --- 1. DEFINISI MAPPING (WAJIB ADA) ---
+const ULTG_MAPPING = {
+  Lopana: [
+    "GI Lopana",
+    "GI Amurang",
+    "GI Tumpaan",
+    "GI Motoling",
+    "GI Ratahan",
+    "Lopana",
+    "Amurang",
+  ],
+  Sawangan: [
+    "GI Sawangan",
+    "GI Teling",
+    "GI Bitung",
+    "GI Likupang",
+    "GI Likupang New",
+    "GI Paniki",
+    "GI Tanjung Merah",
+  ],
+  Kotamobagu: ["GI Kotamobagu", "GI Lolak", "GI Boroko", "GI Otam"],
+  Gorontalo: [
+    "GI Gorontalo",
+    "GI Isimu",
+    "GI Marisa",
+    "GI Botupingge",
+    "GI Kwandang",
+  ],
+};
+
 const HistoryPage = ({
   historyData,
   isDarkMode,
   fetchHistory,
   loadingHistory,
   onDeleteAll,
+  // 🔥 WAJIB: Terima Props Role & Unit dari App.js
+  userRole,
+  userUnit,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedYear, setSelectedYear] = useState("All");
-  const [selectedStatus, setSelectedStatus] = useState("All"); // "All", "1", "2", "3"
+  const [selectedStatus, setSelectedStatus] = useState("All");
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [sortTdcg, setSortTdcg] = useState("default"); // "default", "highest", "lowest"
+  const [sortTdcg, setSortTdcg] = useState("default");
 
-  // State untuk mode seleksi batch
+  // State Batch
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // --- 1. FILTER TAHUN & PENCARIAN & STATUS & SORTING ---
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // --- 2. FILTER LOGIC (DIPERBAIKI) ---
   const filteredData = useMemo(() => {
-    let result = historyData.filter((item) => {
+    let baseData = historyData;
+
+    // A. LOGIKA SECURITY: FILTER BERDASARKAN UNIT
+    const isSuperAdmin = userRole === "super_admin" || !userUnit;
+
+    if (!isSuperAdmin) {
+      const allowedGIs = ULTG_MAPPING[userUnit] || [];
+      baseData = historyData.filter((item) => {
+        const itemGI = (item.lokasi_gi || "").trim();
+        // Cek apakah GI item ini ada di daftar GI milik user
+        return allowedGIs.some(
+          (allowed) =>
+            itemGI.toLowerCase().includes(allowed.toLowerCase()) ||
+            allowed.toLowerCase().includes(itemGI.toLowerCase())
+        );
+      });
+    }
+
+    // B. LOGIKA SEARCH & FILTER (Perbaikan Syntax Error disini)
+    // Sebelumnya baris .filter((item) => { hilang, makanya error
+    let result = baseData.filter((item) => {
       // Filter Text
       const term = searchTerm.toLowerCase();
       const matchText =
@@ -64,38 +123,61 @@ const HistoryPage = ({
       if (selectedStatus !== "All") {
         const status = (item.status_ieee || "").toLowerCase();
         if (selectedStatus === "1") {
-          matchStatus = status.includes("kondisi 1") || status.includes("normal");
+          matchStatus =
+            status.includes("kondisi 1") || status.includes("normal");
         } else if (selectedStatus === "2") {
-          matchStatus = status.includes("kondisi 2") || status.includes("waspada");
+          matchStatus =
+            status.includes("kondisi 2") || status.includes("waspada");
         } else if (selectedStatus === "3") {
-          matchStatus = status.includes("kondisi 3") || status.includes("bahaya") || status.includes("kritis");
+          matchStatus =
+            status.includes("kondisi 3") ||
+            status.includes("bahaya") ||
+            status.includes("kritis");
         }
       }
 
       return matchText && matchYear && matchStatus;
     });
 
-    // Sorting berdasarkan TDCG
+    // Sorting
     if (sortTdcg === "highest") {
       result = result.sort((a, b) => (b.tdcg || 0) - (a.tdcg || 0));
     } else if (sortTdcg === "lowest") {
       result = result.sort((a, b) => (a.tdcg || 0) - (b.tdcg || 0));
     }
-    // Jika "default", tidak perlu sorting (tetap urutan original)
 
     return result;
-  }, [historyData, searchTerm, selectedYear, selectedStatus, sortTdcg]);
+  }, [
+    historyData,
+    searchTerm,
+    selectedYear,
+    selectedStatus,
+    sortTdcg,
+    userRole,
+    userUnit,
+  ]);
 
-  // List Tahun Unik dari Data
+  // Pagination Calculation
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset ke halaman 1 jika filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedYear, selectedStatus, sortTdcg]);
+
   const availableYears = useMemo(() => {
     const years = new Set(
-      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean),
+      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean)
     );
-    ["2022", "2023", "2024", "2025", "2026"].forEach((y) => years.add(y));
+    ["2023", "2024", "2025", "2026"].forEach((y) => years.add(y));
     return Array.from(years).sort().reverse();
   }, [historyData]);
 
-  // --- 2. HAPUS SATU ---
+  // --- HANDLERS ---
   const handleDelete = async (id) => {
     if (!window.confirm("Hapus data ini?")) return;
     try {
@@ -107,7 +189,6 @@ const HistoryPage = ({
     }
   };
 
-  // --- 3. HAPUS SEMUA ---
   const handleClearAll = async () => {
     if (historyData.length === 0) {
       toast.info("Data kosong.");
@@ -116,10 +197,9 @@ const HistoryPage = ({
     onDeleteAll();
   };
 
-  // --- 4. FUNGSI SELEKSI BATCH ---
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode);
-    setSelectedIds([]); // Reset selection saat toggle
+    setSelectedIds([]);
   };
 
   const toggleSelectItem = (id) => {
@@ -144,7 +224,6 @@ const HistoryPage = ({
       return;
     }
 
-    // Jika hanya 1 file, download langsung
     if (selectedIds.length === 1) {
       const item = historyData.find((d) => d.id === selectedIds[0]);
       if (item) {
@@ -160,95 +239,46 @@ const HistoryPage = ({
       return;
     }
 
-    // Jika lebih dari 1 file, buat ZIP
     toast.info(`Membuat ZIP untuk ${selectedIds.length} file PDF...`);
-
     const zip = new JSZip();
     let successCount = 0;
-    let failedCount = 0;
-    const failedItems = [];
 
     for (let i = 0; i < selectedIds.length; i++) {
       const id = selectedIds[i];
       const item = historyData.find((d) => d.id === id);
-      
-      if (!item) {
-        console.error(`Data tidak ditemukan untuk ID ${id}`);
-        failedCount++;
-        failedItems.push(`ID ${id} (data tidak ditemukan)`);
-        continue;
-      }
-      
+      if (!item) continue;
+
       try {
-        console.log(`[${i + 1}/${selectedIds.length}] Generating PDF for: ${item.nama_trafo} - ${item.tanggal_sampling}`);
-        
-        // Generate PDF dengan timeout
         const pdfBlob = await Promise.race([
           generatePDFBlob(item),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('PDF generation timeout')), 10000)
-          )
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 10000)
+          ),
         ]);
-        
-        if (!pdfBlob || pdfBlob.size === 0) {
-          console.error(`PDF blob is empty for ID ${id} - ${item.nama_trafo}`);
-          failedCount++;
-          failedItems.push(`${item.nama_trafo} (blob kosong)`);
-          continue;
-        }
-        
-        // Buat filename unik dengan menambahkan ID untuk menghindari duplicate
-        const baseFilename = `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}`.replace(
-          /[^a-z0-9_.-]/gi,
-          "_",
-        );
-        const filename = `${baseFilename}_ID${id}.pdf`;
-        
-        // Check jika filename sudah ada (safety check)
-        const filesInZip = Object.keys(zip.files);
-        if (filesInZip.includes(filename)) {
-          console.warn(`⚠ Filename collision detected: ${filename}. Adding timestamp.`);
-          const timestamp = Date.now();
-          const uniqueFilename = `${baseFilename}_ID${id}_${timestamp}.pdf`;
-          zip.file(uniqueFilename, pdfBlob);
-        } else {
-          zip.file(filename, pdfBlob);
-        }
-        
-        successCount++;
-        console.log(`✓ Successfully added PDF ${successCount}/${selectedIds.length}: ${filename} (${(pdfBlob.size / 1024).toFixed(2)} KB)`);
-        
-        // Tambahkan delay kecil untuk menghindari overload
-        if (i < selectedIds.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      } catch (error) {
-        console.error(`✗ Failed to generate PDF for ID ${id} - ${item.nama_trafo}:`, error);
-        failedCount++;
-        failedItems.push(`${item.nama_trafo} (${error.message})`);
-      }
-    }
 
-    console.log(`\nBatch download summary: ${successCount} success, ${failedCount} failed out of ${selectedIds.length} total`);
-    if (failedItems.length > 0) {
-      console.log('Failed items:', failedItems);
+        if (pdfBlob) {
+          const filename =
+            `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}_${id}.pdf`.replace(
+              /[^a-z0-9_.-]/gi,
+              "_"
+            );
+          zip.file(filename, pdfBlob);
+          successCount++;
+        }
+
+        if (i < selectedIds.length - 1)
+          await new Promise((resolve) => setTimeout(resolve, 50));
+      } catch (error) {
+        console.error(error);
+      }
     }
 
     try {
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      const timestamp = new Date().toISOString().split("T")[0];
-      saveAs(zipBlob, `DGA_Reports_${timestamp}.zip`);
-      
-      if (failedCount > 0) {
-        toast.warning(`Berhasil mengunduh ${successCount} file PDF. ${failedCount} file gagal.`, {
-          duration: 5000
-        });
-      } else {
-        toast.success(`Berhasil mengunduh ${successCount} file PDF dalam ZIP.`);
-      }
+      saveAs(zipBlob, `DGA_Reports_Batch.zip`);
+      toast.success(`${successCount} file berhasil diunduh.`);
     } catch (error) {
-      toast.error("Gagal membuat file ZIP.");
-      console.error('ZIP generation error:', error);
+      toast.error("Gagal membuat ZIP.");
     }
 
     setSelectedIds([]);
@@ -257,16 +287,13 @@ const HistoryPage = ({
 
   const handleBatchDelete = async () => {
     if (selectedIds.length === 0) {
-      toast.warning("Pilih minimal 1 data untuk dihapus.");
+      toast.warning("Pilih minimal 1 data.");
       return;
     }
-
-    if (!window.confirm(`Hapus ${selectedIds.length} data yang dipilih?`))
-      return;
+    if (!window.confirm(`Hapus ${selectedIds.length} data terpilih?`)) return;
 
     setIsDeleting(true);
     let count = 0;
-
     for (const id of selectedIds) {
       try {
         await fetch(`http://127.0.0.1:8000/history/${id}`, {
@@ -278,15 +305,13 @@ const HistoryPage = ({
         console.error(e);
       }
     }
-
-    toast.success(`Berhasil menghapus ${count} data.`);
+    toast.success(`Terhapus ${count} data.`);
     fetchHistory();
     setSelectedIds([]);
     setSelectionMode(false);
     setIsDeleting(false);
   };
 
-  // Styles dengan Logika Eksplisit (Bukan dark:modifier)
   const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${
     isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
   }`;
@@ -299,21 +324,23 @@ const HistoryPage = ({
       {/* HEADER & FILTER */}
       <div className="space-y-4">
         {/* HEADER */}
-        <div>
-          <h2
-            className={`text-2xl font-bold ${
-              isDarkMode ? "text-white" : "text-[#1B7A8F]"
-            }`}
-          >
-            Arsip Data Pengujian
-          </h2>
-          <p
-            className={`text-sm mt-1 ${
-              isDarkMode ? "text-slate-400" : "text-slate-500"
-            }`}
-          >
-            Total: {filteredData.length} / {historyData.length} Data
-          </p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+          <div>
+            <h2
+              className={`text-2xl font-bold ${
+                isDarkMode ? "text-white" : "text-[#1B7A8F]"
+              }`}
+            >
+              Arsip Data Pengujian {userUnit ? `(${userUnit})` : ""}
+            </h2>
+            <p
+              className={`text-sm mt-1 ${
+                isDarkMode ? "text-slate-400" : "text-slate-500"
+              }`}
+            >
+              Total: {filteredData.length} / {historyData.length} Data
+            </p>
+          </div>
         </div>
 
         {/* FILTER SECTION */}
@@ -324,10 +351,10 @@ const HistoryPage = ({
               : "bg-gray-50 border-gray-200"
           }`}
         >
-          {/* Filter Row 1: Year, TDCG, Status */}
+          {/* Filter Row 1 */}
           <div className="flex flex-col md:flex-row gap-3 mb-4">
-            {/* FILTER TAHUN */}
-            <div className="relative flex-1 md:flex-none md:w-44">
+            {/* Filter Tahun */}
+            <div className="relative flex-1 md:flex-none md:w-40">
               <Filter
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -335,10 +362,10 @@ const HistoryPage = ({
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
                   isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
-                    : "bg-white border-gray-300 hover:border-gray-400"
+                    ? "bg-slate-900 border-slate-600 text-white"
+                    : "bg-white border-gray-300"
                 }`}
               >
                 <option value="All">Semua Tahun</option>
@@ -350,8 +377,8 @@ const HistoryPage = ({
               </select>
             </div>
 
-            {/* FILTER TDCG */}
-            <div className="relative flex-1 md:flex-none md:w-44">
+            {/* Filter TDCG */}
+            <div className="relative flex-1 md:flex-none md:w-40">
               <ArrowUpDown
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -359,10 +386,10 @@ const HistoryPage = ({
               <select
                 value={sortTdcg}
                 onChange={(e) => setSortTdcg(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
                   isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
-                    : "bg-white border-gray-300 hover:border-gray-400"
+                    ? "bg-slate-900 border-slate-600 text-white"
+                    : "bg-white border-gray-300"
                 }`}
               >
                 <option value="default">Urutkan TDCG</option>
@@ -371,8 +398,8 @@ const HistoryPage = ({
               </select>
             </div>
 
-            {/* FILTER STATUS */}
-            <div className="relative flex-1 md:flex-none md:w-44">
+            {/* Filter Status */}
+            <div className="relative flex-1 md:flex-none md:w-40">
               <AlertTriangle
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -380,20 +407,20 @@ const HistoryPage = ({
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer transition-colors ${
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
                   isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white hover:border-slate-500"
-                    : "bg-white border-gray-300 hover:border-gray-400"
+                    ? "bg-slate-900 border-slate-600 text-white"
+                    : "bg-white border-gray-300"
                 }`}
               >
                 <option value="All">Semua Status</option>
-                <option value="1">Kondisi 1 (Normal)</option>
-                <option value="2">Kondisi 2 (Waspada)</option>
-                <option value="3">Kondisi 3 (Kritis)</option>
+                <option value="1">Normal</option>
+                <option value="2">Waspada</option>
+                <option value="3">Kritis</option>
               </select>
             </div>
 
-            {/* SEARCH */}
+            {/* Search */}
             <div className="relative flex-1">
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -404,10 +431,10 @@ const HistoryPage = ({
                 placeholder="Cari GI atau Trafo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none transition-colors ${
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none ${
                   isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white placeholder-slate-400 hover:border-slate-500 focus:border-slate-500"
-                    : "bg-white border-gray-300 placeholder-gray-400 hover:border-gray-400 focus:border-gray-400"
+                    ? "bg-slate-900 border-slate-600 text-white"
+                    : "bg-white border-gray-300"
                 }`}
               />
             </div>
@@ -421,21 +448,23 @@ const HistoryPage = ({
                   onClick={toggleSelectionMode}
                   className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
                 >
-                  <CheckSquare size={16} />
-                  <span>Seleksi</span>
+                  <CheckSquare size={16} /> <span>Seleksi Batch</span>
                 </button>
-                <button
-                  onClick={handleClearAll}
-                  disabled={isDeleting || historyData.length === 0}
-                  className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="animate-spin" size={16} />
-                  ) : (
-                    <Trash2 size={16} />
-                  )}
-                  <span>Hapus Semua</span>
-                </button>
+                {/* Tombol Hapus Semua hanya muncul jika Super Admin */}
+                {userRole === "super_admin" && (
+                  <button
+                    onClick={handleClearAll}
+                    disabled={isDeleting || historyData.length === 0}
+                    className="px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}{" "}
+                    <span>Hapus Semua</span>
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -444,8 +473,7 @@ const HistoryPage = ({
                   disabled={selectedIds.length === 0}
                   className="px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
                 >
-                  <Download size={16} />
-                  Download ({selectedIds.length})
+                  <Download size={16} /> Download ({selectedIds.length})
                 </button>
                 <button
                   onClick={handleBatchDelete}
@@ -456,15 +484,14 @@ const HistoryPage = ({
                     <Loader2 className="animate-spin" size={16} />
                   ) : (
                     <Trash2 size={16} />
-                  )}
+                  )}{" "}
                   <span>Hapus ({selectedIds.length})</span>
                 </button>
                 <button
                   onClick={toggleSelectionMode}
                   className="px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
                 >
-                  <X size={16} />
-                  <span>Batal</span>
+                  <X size={16} /> <span>Batal</span>
                 </button>
               </>
             )}
@@ -504,7 +531,7 @@ const HistoryPage = ({
                 )}
                 <th className={thClass}>Tanggal</th>
                 <th className={thClass}>Identitas</th>
-                <th className={thClass}>Status (IEEE C57.104-2019)</th>
+                <th className={thClass}>Status (IEEE C57.104)</th>
                 <th className={`text-center ${thClass}`}>TDCG</th>
                 {!selectionMode && (
                   <th className={`text-center ${thClass}`}>Aksi</th>
@@ -514,24 +541,18 @@ const HistoryPage = ({
             <tbody>
               {loadingHistory ? (
                 <tr>
-                  <td
-                    colSpan={selectionMode ? "6" : "5"}
-                    className="p-8 text-center text-gray-500"
-                  >
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={selectionMode ? "6" : "5"}
-                    className="p-8 text-center text-gray-500"
-                  >
-                    Data tidak ditemukan.
+                  <td colSpan={6} className="p-8 text-center text-gray-500">
+                    Data tidak ditemukan untuk unit ini.
                   </td>
                 </tr>
               ) : (
-                filteredData.map((item) => (
+                paginatedData.map((item) => (
                   <tr
                     key={item.id}
                     onClick={() => selectionMode && toggleSelectItem(item.id)}
@@ -584,20 +605,27 @@ const HistoryPage = ({
                       {(() => {
                         let bg = "";
                         let icon = null;
-                        // Cek status dengan lowercase agar lebih fleksibel
                         const status = (item.status_ieee || "").toLowerCase();
-                        if (status.includes("kondisi 1") || status.includes("normal")) {
+                        if (
+                          status.includes("kondisi 1") ||
+                          status.includes("normal")
+                        ) {
                           bg = "bg-green-100 text-green-700";
                           icon = <CheckCircle size={10} />;
-                        } else if (status.includes("kondisi 2") || status.includes("waspada")) {
+                        } else if (
+                          status.includes("kondisi 2") ||
+                          status.includes("waspada")
+                        ) {
                           bg = "bg-orange-100 text-orange-700";
                           icon = <AlertTriangle size={10} />;
-                        } else if (status.includes("kondisi 3") || status.includes("bahaya") || status.includes("kritis")) {
+                        } else {
                           bg = "bg-red-100 text-red-700";
                           icon = <AlertTriangle size={10} />;
                         }
                         return (
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${bg}`}>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${bg}`}
+                          >
                             {icon} {item.status_ieee}
                           </span>
                         );
@@ -609,26 +637,21 @@ const HistoryPage = ({
                         let tdcgClass = "text-[#1B7A8F]";
                         if (
                           status.includes("kondisi 3") ||
-                          status.includes("bahaya") ||
-                          status.includes("kritis")
-                        ) {
-                          tdcgClass = "bg-red-100 text-red-500 rounded-lg px-2 py-1";
-                        } else if (
-                          status.includes("kondisi 2") ||
-                          status.includes("waspada")
-                        ) {
-                          tdcgClass = "bg-orange-100 text-orange-500 rounded-lg px-2 py-1";
-                        } else if (
-                          status.includes("kondisi 1") ||
-                          status.includes("normal")
-                        ) {
-                          tdcgClass = "bg-green-100 text-green-600 rounded-lg px-2 py-1";
-                        } else {
-                          // fallback: keep previous threshold logic
-                          tdcgClass = item.tdcg > 720 ? "text-red-500" : "text-[#1B7A8F]";
-                        }
-
-                        return <span className={tdcgClass}>{Math.round(item.tdcg)}</span>;
+                          status.includes("bahaya")
+                        )
+                          tdcgClass =
+                            "bg-red-100 text-red-500 rounded-lg px-2 py-1";
+                        else if (status.includes("kondisi 2"))
+                          tdcgClass =
+                            "bg-orange-100 text-orange-500 rounded-lg px-2 py-1";
+                        else if (status.includes("kondisi 1"))
+                          tdcgClass =
+                            "bg-green-100 text-green-600 rounded-lg px-2 py-1";
+                        return (
+                          <span className={tdcgClass}>
+                            {Math.round(item.tdcg)}
+                          </span>
+                        );
                       })()}
                     </td>
                     {!selectionMode && (
@@ -651,7 +674,7 @@ const HistoryPage = ({
                           <button
                             onClick={() => handleDelete(item.id)}
                             className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100"
-                            title="Hapus Data"
+                            title="Hapus"
                           >
                             <Trash2 size={16} />
                           </button>
@@ -664,221 +687,186 @@ const HistoryPage = ({
             </tbody>
           </table>
         </div>
+
+        {/* PAGINATION CONTROLS */}
+        {filteredData.length > 0 && (
+          <div
+            className={`p-4 border-t flex items-center justify-between ${
+              isDarkMode ? "border-slate-700" : "border-gray-200"
+            }`}
+          >
+            <span
+              className={`text-xs ${
+                isDarkMode ? "text-slate-400" : "text-gray-500"
+              }`}
+            >
+              Halaman <strong>{currentPage}</strong> dari{" "}
+              <strong>{totalPages}</strong> (Total {filteredData.length} data)
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+                className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => p + 1)}
+                className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${
+                  isDarkMode ? "text-white" : "text-gray-800"
+                }`}
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* === MODAL DETAIL TRAFO === */}
+      {/* MODAL DETAIL */}
       {selectedItem && (
-        <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-sm overflow-hidden" style={{ margin: 0, padding: 0 }}>
+        <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
           <div
-            className={`w-[95%] max-w-5xl rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[92vh] m-4
-            ${isDarkMode ? "bg-slate-800" : "bg-white"}
-          `}
+            className={`w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${
+              isDarkMode ? "bg-slate-800" : "bg-white"
+            }`}
           >
             {/* Header Modal */}
             <div
-              className={`flex justify-between items-center p-6 border-b flex-shrink-0
-              ${
-                isDarkMode
-                  ? "bg-slate-800 border-slate-700"
-                  : "bg-white border-gray-100"
-              }
-            `}
+              className={`flex justify-between items-center p-6 border-b ${
+                isDarkMode ? "border-slate-700" : "border-gray-100"
+              }`}
             >
               <div>
                 <h3
-                  className={`text-xl font-bold flex items-center gap-2 ${
+                  className={`text-xl font-bold flex gap-2 ${
                     isDarkMode ? "text-white" : "text-gray-800"
                   }`}
                 >
                   <Zap className="text-yellow-500" /> Detail Pengujian
                 </h3>
-                <p
-                  className={`text-sm ${
-                    isDarkMode ? "text-gray-400" : "text-gray-500"
-                  }`}
-                >
+                <p className="text-sm opacity-60">
                   {selectedItem.nama_trafo} - {selectedItem.lokasi_gi}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
-                className={`p-2 rounded-full transition flex-shrink-0 ${
-                  isDarkMode
-                    ? "hover:bg-slate-700 text-white"
-                    : "hover:bg-gray-100 text-gray-800"
-                }`}
+                className="p-2 hover:bg-gray-500/20 rounded-full"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
-              {/* Info Utama (Total Gas & Status) */}
+            {/* Body Modal Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Stats Cards */}
               <div className="grid grid-cols-2 gap-4 mb-6">
-                {/* Kartu Total Gas */}
                 <div
-                  className={`p-4 rounded-xl border flex flex-col justify-center
-                  ${
+                  className={`p-4 rounded-xl border ${
                     isDarkMode
                       ? "bg-slate-700 border-slate-600"
-                      : "bg-[#F0F9FA] border-[#1B7A8F]/30"
-                  } 
-                `}
+                      : "bg-blue-50 border-blue-200"
+                  }`}
                 >
-                  <p
-                    className={`text-xs font-bold uppercase tracking-wider ${
-                      isDarkMode ? "text-blue-300" : "text-[#1B7A8F]"
-                    }`}
-                  >
+                  <p className="text-xs font-bold opacity-60 uppercase">
                     Total Gas (TDCG)
                   </p>
-                  <p
-                    className={`text-3xl font-black mt-1 ${
-                      isDarkMode ? "text-white" : "text-[#1B7A8F]"
-                    }`}
-                  >
+                  <p className="text-3xl font-black">
                     {selectedItem.tdcg || 0}{" "}
-                    <span className="text-sm font-normal opacity-70">ppm</span>
+                    <span className="text-sm font-normal">ppm</span>
                   </p>
                 </div>
-
-                {/* Kartu Status IEEE */}
                 <div
-                  className={`p-4 rounded-xl border flex flex-col justify-center
-                  ${
+                  className={`p-4 rounded-xl border ${
                     isDarkMode
                       ? "bg-slate-700 border-slate-600"
-                      : "bg-[#F0F9FA] border-[#1B7A8F]/30"
-                  }
-                `}
+                      : "bg-blue-50 border-blue-200"
+                  }`}
                 >
-                  <p
-                    className={`text-xs font-bold uppercase tracking-wider ${
-                      isDarkMode ? "text-blue-300" : "text-[#1B7A8F]"
-                    }`}
-                  >
+                  <p className="text-xs font-bold opacity-60 uppercase">
                     Status IEEE
                   </p>
                   <p
-                    className={`text-xl font-bold mt-2 ${
+                    className={`text-xl font-bold ${
                       selectedItem.status_ieee?.includes("Normal")
-                        ? isDarkMode
-                          ? "text-green-400"
-                          : "text-green-600"
-                        : isDarkMode
-                          ? "text-red-400"
-                          : "text-red-600"
+                        ? "text-green-500"
+                        : "text-red-500"
                     }`}
                   >
-                    {selectedItem.status_ieee || "Unknown"}
+                    {selectedItem.status_ieee}
                   </p>
                 </div>
               </div>
 
-              {/* Main Grid: Gas Table & Duval Pentagon */}
+              {/* Content Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Kolom Kiri: Komposisi Gas */}
-                <div>
-                  <h4
-                    className={`font-bold mb-4 pb-2 border-b flex items-center gap-2
-                    ${
-                      isDarkMode
-                        ? "text-gray-200 border-slate-700"
-                        : "text-gray-700 border-gray-100"
-                    }
-                  `}
-                  >
-                    <FileText size={16} /> Komposisi Gas Terlarut
-                  </h4>
-
-                  {/* Grid Gas */}
-                  <div className="grid grid-cols-2 gap-3">
-                    {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
-                      (gas) => (
-                        <div
-                          key={gas}
-                          className={`p-3 rounded-lg border flex flex-col items-center justify-center text-center transition-colors
-                          ${
-                            isDarkMode
-                              ? "bg-slate-700 border-slate-600"
-                              : "bg-white border-gray-200"
-                          }
-                        `}
-                        >
-                          <span
-                            className={`uppercase text-xs font-bold mb-1 ${
-                              isDarkMode ? "text-gray-400" : "text-gray-500"
-                            }`}
-                          >
-                            {gas}
-                          </span>
-                          <span
-                            className={`font-mono text-lg font-bold ${
-                              isDarkMode ? "text-white" : "text-gray-800"
-                            }`}
-                          >
-                            {selectedItem[gas]}
-                          </span>
-                        </div>
-                      ),
-                    )}
-                  </div>
+                {/* Gas List */}
+                <div className="grid grid-cols-2 gap-3 h-fit">
+                  {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
+                    (gas) => (
+                      <div
+                        key={gas}
+                        className={`p-3 rounded border text-center ${
+                          isDarkMode
+                            ? "border-slate-600 bg-slate-700"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <p className="text-xs uppercase opacity-60 font-bold">
+                          {gas}
+                        </p>
+                        <p className="text-lg font-mono font-bold">
+                          {selectedItem[gas]}
+                        </p>
+                      </div>
+                    )
+                  )}
                 </div>
-
-                {/* Kolom Kanan: Duval Pentagon */}
+                {/* Duval Pentagon */}
                 <div
-                  className={`p-6 rounded-xl border flex flex-col items-center justify-center ${
+                  className={`p-4 rounded-xl border flex flex-col items-center justify-center ${
                     isDarkMode
-                      ? "bg-slate-700/30 border-slate-600"
-                      : "bg-gray-50 border-gray-200"
+                      ? "bg-slate-700/50 border-slate-600"
+                      : "bg-gray-50"
                   }`}
                 >
-                  <h4
-                    className={`font-bold mb-4 text-xs uppercase tracking-widest text-center ${
-                      isDarkMode ? "text-gray-300" : "text-gray-600"
-                    }`}
-                  >
+                  <p className="text-xs font-bold mb-4 uppercase tracking-widest opacity-60">
                     Duval Pentagon
-                  </h4>
+                  </p>
                   <div className="transform scale-100">
                     <DuvalPentagon
-                      h2={parseFloat(selectedItem.h2) || 0}
-                      ch4={parseFloat(selectedItem.ch4) || 0}
-                      c2h6={parseFloat(selectedItem.c2h6) || 0}
-                      c2h4={parseFloat(selectedItem.c2h4) || 0}
-                      c2h2={parseFloat(selectedItem.c2h2) || 0}
+                      h2={selectedItem.h2}
+                      ch4={selectedItem.ch4}
+                      c2h6={selectedItem.c2h6}
+                      c2h4={selectedItem.c2h4}
+                      c2h2={selectedItem.c2h2}
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Footer */}
+            {/* Footer Modal */}
             <div
-              className={`p-5 flex justify-end gap-3 border-t flex-shrink-0
-              ${
+              className={`p-4 border-t flex justify-end gap-3 ${
                 isDarkMode
-                  ? "bg-slate-900 border-slate-700"
-                  : "bg-gray-50 border-gray-100"
-              }
-            `}
+                  ? "border-slate-700 bg-slate-900"
+                  : "border-gray-100 bg-gray-50"
+              }`}
             >
               <button
                 onClick={() => generatePDFFromTemplate(selectedItem)}
-                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95"
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex gap-2 items-center"
               >
-                <Download size={18} /> Download Laporan PDF
+                <Download size={16} /> PDF
               </button>
               <button
                 onClick={() => setSelectedItem(null)}
-                className={`px-5 py-2.5 border rounded-lg text-sm font-bold transition-all
-                  ${
-                    isDarkMode
-                      ? "bg-slate-800 border-slate-600 text-white hover:bg-slate-700"
-                      : "bg-white border-gray-300 text-gray-700 hover:bg-gray-100"
-                  }
-                `}
+                className="px-4 py-2 border rounded-lg font-bold text-sm hover:bg-gray-500/10"
               >
                 Tutup
               </button>

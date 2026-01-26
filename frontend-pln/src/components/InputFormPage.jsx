@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   FileText,
   Thermometer,
@@ -13,6 +13,7 @@ import DuvalPentagon from "./DuvalPentagon";
 // Pastikan DuvalTriangle diimport jika digunakan, atau hapus jika tidak
 // import DuvalTriangle from "./DuvalTriangle";
 import { allGIs, trafoDatabase } from "../data/assetData";
+import { supabase } from "../lib/supabaseClient";
 
 const InputFormPage = ({
   formData,
@@ -23,29 +24,71 @@ const InputFormPage = ({
   isDarkMode,
   isLoading,
 }) => {
+  // --- STATE UNTUK GI & TRAFO DINAMIS ---
+  const [dynamicGIs, setDynamicGIs] = useState([]);
+  const [dynamicTrafos, setDynamicTrafos] = useState([]);
+
+  // --- LOGIKA FETCH DATA DARI SUPABASE ---
+  useEffect(() => {
+    const fetchAssets = async () => {
+      // Ambil data unik untuk lokasi_gi
+      const { data, error } = await supabase
+        .from("assets_trafo")
+        .select("lokasi_gi");
+
+      if (data) {
+        // Filter duplikat GI
+        const uniqueGIs = [...new Set(data.map((item) => item.lokasi_gi))];
+        setDynamicGIs(uniqueGIs);
+      }
+    };
+
+    fetchAssets();
+  }, []);
+
+  // --- LOGIKA LOAD TRAFO SAAT GI DIPILIH ---
+  useEffect(() => {
+    const fetchTrafos = async () => {
+      if (formData.lokasi_gi) {
+        const { data, error } = await supabase
+          .from("assets_trafo")
+          .select("*")
+          .eq("lokasi_gi", formData.lokasi_gi);
+
+        if (data) {
+          setDynamicTrafos(data);
+        }
+      } else {
+        setDynamicTrafos([]);
+      }
+    };
+
+    fetchTrafos();
+  }, [formData.lokasi_gi]);
+
   // --- LOGIKA AUTOFILL ---
   useEffect(() => {
     if (typeof setFormData !== "function") return;
-    if (!trafoDatabase) return;
 
     if (formData.lokasi_gi && formData.nama_trafo) {
-      const giData = trafoDatabase[formData.lokasi_gi];
-      if (!giData) return;
-
-      const selectedTrafo = giData.find((t) => t.name === formData.nama_trafo);
+      // Cari trafo yang dipilih dari state dynamicTrafos
+      const selectedTrafo = dynamicTrafos.find(
+        (t) => t.nama_trafo === formData.nama_trafo
+      );
 
       if (selectedTrafo) {
         setFormData((prev) => ({
           ...prev,
           merk_trafo: selectedTrafo.merk || "",
-          serial_number: selectedTrafo.sn || "",
-          tahun_pembuatan: selectedTrafo.year || "",
-          level_tegangan: selectedTrafo.volt || "",
-          jenis_minyak: selectedTrafo.oilType || prev.jenis_minyak || "",
+          serial_number: selectedTrafo.serial_number || "",
+          tahun_pembuatan: selectedTrafo.tahun_pembuatan || "",
+          level_tegangan: selectedTrafo.level_tegangan || "",
+          // Note: jenis_minyak tidak ada di tabel assets_trafo default, sesuaikan jika ada
+          jenis_minyak: prev.jenis_minyak || "",
         }));
       }
     }
-  }, [formData.lokasi_gi, formData.nama_trafo, setFormData]);
+  }, [formData.lokasi_gi, formData.nama_trafo, dynamicTrafos, setFormData]);
 
   // --- STYLING CONSTANTS ---
   const theme = {
@@ -89,7 +132,9 @@ const InputFormPage = ({
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2
-              className={`text-2xl md:text-3xl font-extrabold ${isDarkMode ? "text-white" : "text-[#1B7A8F]"}`}
+              className={`text-2xl md:text-3xl font-extrabold ${
+                isDarkMode ? "text-white" : "text-[#1B7A8F]"
+              }`}
             >
               Formulir Uji DGA
             </h2>
@@ -127,11 +172,12 @@ const InputFormPage = ({
                       required
                     >
                       <option value="">- Pilih GI -</option>
-                      {allGIs
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((gi, idx) => (
-                          <option key={idx} value={gi.name}>
-                            {gi.name}
+                      {/* Render Dynamic GIs dari Supabase */}
+                      {dynamicGIs
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((giName, idx) => (
+                          <option key={idx} value={giName}>
+                            {giName}
                           </option>
                         ))}
                     </select>
@@ -147,12 +193,12 @@ const InputFormPage = ({
                       required
                     >
                       <option value="">- Pilih Trafo -</option>
-                      {formData.lokasi_gi &&
-                        trafoDatabase[formData.lokasi_gi]?.map((t, idx) => (
-                          <option key={idx} value={t.name}>
-                            {t.name}
-                          </option>
-                        ))}
+                      {/* Render Dynamic Trafos berdasarkan GI yang dipilih */}
+                      {dynamicTrafos.map((t, idx) => (
+                        <option key={idx} value={t.nama_trafo}>
+                          {t.nama_trafo}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -243,7 +289,9 @@ const InputFormPage = ({
                 {["h2", "ch4", "c2h2", "c2h4", "c2h6"].map((gas) => (
                   <div key={gas} className="relative">
                     <label
-                      className={`absolute left-3 top-2.5 text-xs font-bold uppercase ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}
+                      className={`absolute left-3 top-2.5 text-xs font-bold uppercase ${
+                        isDarkMode ? "text-gray-500" : "text-gray-400"
+                      }`}
                     >
                       {gas}
                     </label>
@@ -253,7 +301,11 @@ const InputFormPage = ({
                       name={gas}
                       value={formData[gas]}
                       onChange={handleChange}
-                      className={`w-full pl-12 pr-4 py-2.5 rounded-lg border text-right font-mono text-lg font-bold outline-none focus:ring-1 focus:ring-green-500 transition-all ${isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-gray-300 text-gray-900"}`}
+                      className={`w-full pl-12 pr-4 py-2.5 rounded-lg border text-right font-mono text-lg font-bold outline-none focus:ring-1 focus:ring-green-500 transition-all ${
+                        isDarkMode
+                          ? "bg-slate-900 border-slate-700 text-white"
+                          : "bg-white border-gray-300 text-gray-900"
+                      }`}
                       placeholder="0"
                     />
                   </div>
@@ -262,7 +314,9 @@ const InputFormPage = ({
                 {["co", "co2"].map((gas) => (
                   <div key={gas} className="relative">
                     <label
-                      className={`absolute left-3 top-2.5 text-xs font-bold uppercase ${isDarkMode ? "text-gray-500" : "text-gray-400"}`}
+                      className={`absolute left-3 top-2.5 text-xs font-bold uppercase ${
+                        isDarkMode ? "text-gray-500" : "text-gray-400"
+                      }`}
                     >
                       {gas}
                     </label>
@@ -272,7 +326,11 @@ const InputFormPage = ({
                       name={gas}
                       value={formData[gas]}
                       onChange={handleChange}
-                      className={`w-full pl-14 pr-4 py-2.5 rounded-lg border text-right font-mono text-lg font-bold outline-none focus:ring-1 focus:ring-green-500 transition-all ${isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-gray-300 text-gray-900"}`}
+                      className={`w-full pl-14 pr-4 py-2.5 rounded-lg border text-right font-mono text-lg font-bold outline-none focus:ring-1 focus:ring-green-500 transition-all ${
+                        isDarkMode
+                          ? "bg-slate-900 border-slate-700 text-white"
+                          : "bg-white border-gray-300 text-gray-900"
+                      }`}
                       placeholder="0"
                     />
                   </div>
@@ -305,8 +363,8 @@ const InputFormPage = ({
                 result.ieee_status.includes("Normal")
                   ? "bg-emerald-50 border-emerald-200"
                   : result.ieee_status.includes("KRITIS")
-                    ? "bg-rose-50 border-rose-200"
-                    : "bg-amber-50 border-amber-200"
+                  ? "bg-rose-50 border-rose-200"
+                  : "bg-amber-50 border-amber-200"
               }`}
             >
               {/* Background Accent */}
@@ -315,8 +373,8 @@ const InputFormPage = ({
                   result.ieee_status.includes("Normal")
                     ? "bg-emerald-500"
                     : result.ieee_status.includes("KRITIS")
-                      ? "bg-rose-500"
-                      : "bg-amber-500"
+                    ? "bg-rose-500"
+                    : "bg-amber-500"
                 }`}
               ></div>
 
@@ -326,8 +384,8 @@ const InputFormPage = ({
                     result.ieee_status.includes("Normal")
                       ? "bg-emerald-100 text-emerald-600"
                       : result.ieee_status.includes("KRITIS")
-                        ? "bg-rose-100 text-rose-600"
-                        : "bg-amber-100 text-amber-600"
+                      ? "bg-rose-100 text-rose-600"
+                      : "bg-amber-100 text-amber-600"
                   }`}
                 >
                   {result.ieee_status.includes("Normal") ? (
@@ -345,8 +403,8 @@ const InputFormPage = ({
                       result.ieee_status.includes("Normal")
                         ? "text-emerald-800"
                         : result.ieee_status.includes("KRITIS")
-                          ? "text-rose-800"
-                          : "text-amber-800"
+                        ? "text-rose-800"
+                        : "text-amber-800"
                     }`}
                   >
                     {result.ieee_status}
@@ -452,7 +510,11 @@ const InputFormPage = ({
 
                 <div className="space-y-4">
                   <div
-                    className={`p-3 rounded-lg border-l-4 ${isDarkMode ? "bg-slate-900 border-purple-500" : "bg-purple-50 border-purple-500"}`}
+                    className={`p-3 rounded-lg border-l-4 ${
+                      isDarkMode
+                        ? "bg-slate-900 border-purple-500"
+                        : "bg-purple-50 border-purple-500"
+                    }`}
                   >
                     <p className="text-xs uppercase font-bold text-purple-600 mb-1">
                       Metode Rogers Ratio
@@ -464,7 +526,11 @@ const InputFormPage = ({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div
-                      className={`p-3 rounded-lg border ${isDarkMode ? "bg-slate-900 border-slate-700" : "bg-gray-50 border-gray-200"}`}
+                      className={`p-3 rounded-lg border ${
+                        isDarkMode
+                          ? "bg-slate-900 border-slate-700"
+                          : "bg-gray-50 border-gray-200"
+                      }`}
                     >
                       <p className="text-xs text-gray-500 mb-1">
                         Key Gas Dominan
@@ -478,15 +544,19 @@ const InputFormPage = ({
                         result.paper_health?.status.includes("Fault")
                           ? "bg-red-50 border-red-200"
                           : isDarkMode
-                            ? "bg-slate-900 border-slate-700"
-                            : "bg-gray-50 border-gray-200"
+                          ? "bg-slate-900 border-slate-700"
+                          : "bg-gray-50 border-gray-200"
                       }`}
                     >
                       <p className="text-xs text-gray-500 mb-1">
                         Isolasi Kertas (CO2/CO)
                       </p>
                       <p
-                        className={`font-bold ${result.paper_health?.status.includes("Fault") ? "text-red-600" : theme.text}`}
+                        className={`font-bold ${
+                          result.paper_health?.status.includes("Fault")
+                            ? "text-red-600"
+                            : theme.text
+                        }`}
                       >
                         {result.paper_health ? result.paper_health.status : "-"}
                       </p>
@@ -497,7 +567,11 @@ const InputFormPage = ({
 
               {/* AI ANALYSIS */}
               <div
-                className={`rounded-2xl border p-6 relative overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-gradient-to-br from-white to-blue-50 border-blue-100 shadow-sm"}`}
+                className={`rounded-2xl border p-6 relative overflow-hidden ${
+                  isDarkMode
+                    ? "bg-slate-800 border-slate-700"
+                    : "bg-gradient-to-br from-white to-blue-50 border-blue-100 shadow-sm"
+                }`}
               >
                 {/* Decor */}
                 <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500 rounded-full blur-3xl opacity-10"></div>
@@ -512,7 +586,9 @@ const InputFormPage = ({
                 </div>
 
                 <div
-                  className={`prose prose-sm max-w-none font-medium leading-relaxed whitespace-pre-line ${isDarkMode ? "prose-invert text-gray-300" : "text-gray-700"}`}
+                  className={`prose prose-sm max-w-none font-medium leading-relaxed whitespace-pre-line ${
+                    isDarkMode ? "prose-invert text-gray-300" : "text-gray-700"
+                  }`}
                 >
                   {result.volty_chat
                     ? result.volty_chat

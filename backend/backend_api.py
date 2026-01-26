@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import joblib  # <--- SUDAH DIGANTI (PENTING)
+import joblib
 import numpy as np
 import os
 import sys
@@ -29,7 +29,6 @@ app.add_middleware(
 
 # 3. KONEKSI CLIENTS
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-# Cek keduanya untuk backward compatibility
 VITE_SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
 VITE_SUPABASE_KEY = os.getenv("VITE_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
@@ -54,19 +53,16 @@ if VITE_SUPABASE_URL and VITE_SUPABASE_KEY:
         print(f"❌ Supabase Error: {e}")
 
 # ==========================================
-# 4. INIT MODEL ML (BAGIAN PERBAIKAN UTAMA)
+# 4. INIT MODEL ML
 # ==========================================
 model_trafo = None
 try:
-    # Menggunakan Absolute Path agar file pasti ditemukan dimanapun terminal dibuka
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_path = os.path.join(current_dir, "smart_dga_model_keygas.pkl")
     
-    # Cek apakah file ada
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"File tidak ditemukan di path: {model_path}")
 
-    # LOAD MENGGUNAKAN JOBLIB (Bukan Pickle)
     model_trafo = joblib.load(model_path)
     print("✅ ML Model Loaded (via Joblib)")
     
@@ -87,7 +83,7 @@ class TrafoInput(BaseModel):
     nama_trafo: str = ""
     tanggal_sampling: str = ""
     suhu_sampel: float = 0
-    diambil_oleh: str = ""
+    diambil_oleh: str = "" 
     h2: float
     ch4: float
     c2h2: float
@@ -99,6 +95,18 @@ class TrafoInput(BaseModel):
 class ChatInput(BaseModel):
     message: str
     context: str = "" 
+
+class TrafoBaruInput(BaseModel):
+    nama_trafo: str
+    lokasi_gi: str
+    merk: str
+    serial_number: str
+    tahun_pembuatan: str
+    level_tegangan: str
+    user_email: str 
+
+class DeleteRequest(BaseModel):
+    user_email: str 
 
 # ==========================================
 # 6. METODE ANALISIS TEKNIS
@@ -131,7 +139,6 @@ def analisis_duval_triangle_1(data: TrafoInput):
 
     diagnosa = "Tidak Teridentifikasi"
 
-    # Logika Zone Duval Triangle 1 (Standard IEEE/IEC)
     if pct_c2h2 >= 98:
         diagnosa = "PD: Partial Discharge"
     elif pct_c2h2 >= 87 and pct_c2h2 < 98 and pct_ch4 < 13:
@@ -179,52 +186,31 @@ def analisis_ieee_2019(data: TrafoInput):
     return status_text, ", ".join(diagnosa) if diagnosa else "Parameter Gas Normal"
 
 def analisis_rogers_ratio(data: TrafoInput):
-    # Ekstrak nilai gas dari input data
     h2 = data.h2
     ch4 = data.ch4
     c2h6 = data.c2h6
     c2h4 = data.c2h4
     c2h2 = data.c2h2
 
-    # 1. Hitung Rasio (Cegah pembagian dengan Nol)
-    # R2 = C2H2 / C2H4
     r2 = c2h2 / c2h4 if c2h4 > 0 else 0
-    
-    # R1 = CH4 / H2
     r1 = ch4 / h2 if h2 > 0 else 0
-    
-    # R5 = C2H4 / C2H6
     r5 = c2h4 / c2h6 if c2h6 > 0 else 0
 
     diagnosis = "Tidak Terdefinisi (Unidentified)"
 
-    # 2. Logika Rogers (Sesuai Standar IEC 60599 / IEEE)
-    
-    # Case 0: Normal
     if r2 < 0.1 and 0.1 <= r1 <= 1.0 and r5 < 1.0:
         diagnosis = "Normal"
-    
-    # Case 1: Partial Discharge (PD)
     elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0:
         diagnosis = "Partial Discharge (PD)"
-        
-    # Case 2: High Energy Arcing
     elif 0.1 <= r2 <= 3.0 and 0.1 <= r1 <= 1.0 and r5 > 3.0:
         diagnosis = "Arcing (High Energy)"
-        
-    # Case 3: Low Energy Thermal (< 700 C)
     elif r2 < 0.1 and 0.1 <= r1 <= 1.0 and 1.0 <= r5 <= 3.0:
         diagnosis = "Thermal Fault < 700°C"
-        
-    # Case 4: High Energy Thermal (> 700 C)
     elif r2 < 0.1 and r1 > 1.0 and 1.0 <= r5 <= 3.0:
         diagnosis = "Thermal Fault > 700°C"
-
-    # Case 5: Low Energy Arcing
     elif r2 > 3.0 or (0.1 <= r2 <= 3.0 and r1 > 1.0 and r5 > 3.0):
         diagnosis = "Low Energy Arcing / Sparking"
 
-    # 3. Return Hasil HARUS 4 NILAI (Agar tidak error saat unpacking)
     diagnosis_str = f"{diagnosis} (R1={r1:.2f}, R2={r2:.2f}, R5={r5:.2f})"
     return diagnosis_str, r1, r2, r5
 
@@ -240,103 +226,46 @@ def analisis_key_gas(data: TrafoInput):
     return f"Dominan {dominant_gas}"
 
 # ==========================================
-# 7. ENDPOINTS
+# 7. ENDPOINTS (API ROUTES)
 # ==========================================
 
-# System prompt untuk Volty AI dengan pembatasan topik dan konteks PLN UPT Manado
-VOLTY_SYSTEM_PROMPT = """
-Anda adalah VOLTY, asisten AI cerdas khusus untuk PT. PLN (Persero) UPT Manado.
-
-=== PROFIL PT. PLN (PERSERO) UPT MANADO ===
-**Unit Pelaksana Transmisi (UPT) Manado** adalah unit pelaksana di bawah PT PLN (Persero) Unit Induk Transmisi Sulawesi (UIT Sulawesi) yang berkantor pusat di Makassar.
-
-**Struktur Organisasi:**
-- **Atasan Langsung:** PT PLN (Persero) Unit Induk Transmisi Sulawesi (UIT Sulawesi) - Makassar
-- **Cakupan Wilayah:** Sulawesi Utara dan Gorontalo
-- **Kantor:** Manado, Sulawesi Utara
-
-**Perbedaan UPT dengan UP3:**
-- **UPT (Unit Pelaksana Transmisi):** Mengelola jaringan TRANSMISI tegangan tinggi (150 kV, 275 kV, 500 kV), Gardu Induk (GI), dan transformator daya besar. Fokus pada penyaluran daya listrik dari pembangkit ke jaringan distribusi.
-- **UP3 (Unit Pelaksana Pelayanan Pelanggan):** Mengelola jaringan DISTRIBUSI tegangan menengah dan rendah (20 kV, 380V, 220V), serta pelayanan langsung ke pelanggan (pemasangan, pembayaran, pengaduan).
-
-**Aset yang Dikelola UPT Manado:**
-- Gardu Induk (GI) di wilayah Sulawesi Utara & Gorontalo
-- Transformator Daya (Power Transformer) kapasitas besar (10 MVA - 60 MVA)
-- Jaringan Transmisi Tegangan Tinggi 150 kV
-- Peralatan proteksi dan kontrol GI
-
-=== TENTANG WEBSITE VOLTY (Smart Trafo) ===
-**Tujuan Website:**
-Website ini adalah sistem monitoring cerdas untuk analisis kesehatan transformator daya menggunakan metode DGA (Dissolved Gas Analysis). Dibuat untuk membantu engineer PLN UPT Manado dalam mendeteksi gangguan transformator secara dini.
-
-**Fitur Website:**
-1. **Dashboard:** Melihat ringkasan data transformator dan hasil analisis terbaru
-2. **Input Data DGA:** Memasukkan data hasil uji gas terlarut dalam minyak trafo
-3. **Analisis Otomatis:** Sistem menganalisis menggunakan standar IEEE C57.104-2019, Duval Triangle, Rogers Ratio, dan Key Gas
-4. **Volty AI Chat:** Asisten AI untuk konsultasi teknis seputar transformator dan kelistrikan
-5. **History:** Melihat riwayat hasil uji DGA
-6. **Download Laporan:** Mengunduh laporan hasil analisis dalam format PDF
-7. **Peta GI:** Visualisasi lokasi Gardu Induk
-
-=== TOPIK YANG BOLEH DIJAWAB ===
-1. **Transformator:** Konstruksi, komponen, cara kerja, pemeliharaan, troubleshooting
-2. **DGA (Dissolved Gas Analysis):** Gas-gas terlarut (H2, CH4, C2H2, C2H4, C2H6, CO, CO2), interpretasi hasil, standar IEEE
-3. **Gardu Induk (GI):** Komponen, proteksi, operasi, pemeliharaan
-4. **Minyak Transformator:** Sifat dielektrik, degradasi, pengujian
-5. **Sistem Transmisi:** Tegangan tinggi, penyaluran daya, losses
-6. **PLN & Kelistrikan Indonesia:** Struktur organisasi PLN, regulasi kelistrikan, tarif dasar listrik
-7. **Standar Kelistrikan:** IEEE, IEC, SPLN, SNI terkait kelistrikan
-8. **Keselamatan Kelistrikan:** K3 listrik, prosedur kerja aman
-9. **Website Volty:** Cara penggunaan fitur, interpretasi hasil analisis
-
-=== GAS-GAS DGA YANG HARUS DIPAHAMI ===
-- **Hidrogen (H2):** Indikasi Partial Discharge atau Corona, batas aman < 100 ppm
-- **Metana (CH4):** Indikasi Overheating minyak suhu rendah, batas aman < 120 ppm
-- **Asetilena (C2H2):** Indikasi ARCING (busur api) - SANGAT KRITIS, batas aman < 1 ppm
-- **Etilena (C2H4):** Indikasi Overheating suhu tinggi (>700°C), batas aman < 50 ppm
-- **Etana (C2H6):** Indikasi Overheating suhu menengah, batas aman < 65 ppm
-- **Karbon Monoksida (CO):** Indikasi degradasi isolasi kertas, batas aman < 350 ppm
-- **Karbon Dioksida (CO2):** Indikasi penuaan/oksidasi kertas, batas aman < 2500 ppm
-- **TDCG:** Total Dissolved Combustible Gas (H2+CH4+C2H2+C2H4+C2H6+CO)
-
-=== ATURAN KETAT ===
-1. HANYA jawab pertanyaan seputar PLN, kelistrikan, transformator, DGA, gardu induk, dan topik terkait di atas.
-2. Jika pertanyaan di LUAR topik (politik, hiburan, game, resep masakan, dll), TOLAK dengan sopan.
-3. Jawab dalam Bahasa Indonesia yang baik dan teknis.
-4. Berikan jawaban yang akurat, singkat, padat, dan bermanfaat.
-5. Jika tidak yakin, akui keterbatasan dan sarankan untuk konsultasi ke ahli.
-
-=== FORMAT PENOLAKAN (jika di luar topik) ===
-Jika ada pertanyaan di luar topik, jawab PERSIS seperti ini:
-"Mohon maaf, saya Volty hanya melayani pertanyaan seputar PLN, kelistrikan, transformator, DGA, dan gardu induk. Silakan ajukan pertanyaan yang berkaitan dengan topik tersebut. 🔌⚡"
-"""
-
-@app.post("/chat")
-def chat_with_volty(data: ChatInput):
-    if not groq_client: return {"reply": "Maaf, koneksi AI sedang offline."}
+# --- 1. TAMBAH TRAFO (SUPER ADMIN) ---
+@app.post("/assets/add")
+def add_trafo(data: TrafoBaruInput):
+    if not supabase: return {"error": "DB Error"}
     
-    system_msg = VOLTY_SYSTEM_PROMPT
-    user_msg = data.message
-    
-    if data.context:
-        system_msg += f"\n\nKONTEKS DATA TRAFO SAAT INI:\n{data.context}"
-        
     try:
-        chat = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg}
-            ],
-            model="llama-3.3-70b-versatile",
-            max_tokens=600
-        )
-        return {"reply": chat.choices[0].message.content}
-    except Exception as e:
-        return {"reply": f"Error AI: {str(e)}"}
+        user_check = supabase.table("profiles").select("role").eq("email", data.user_email).execute()
+        
+        # 🔥 FIX TYPE CHECKING & PYLANCE SAFETY
+        current_role = "user"
+        if user_check.data and isinstance(user_check.data, list) and len(user_check.data) > 0:
+            user_data = user_check.data[0] # Ambil item pertama
+            if isinstance(user_data, dict): # Pastikan item adalah Dictionary
+                current_role = user_data.get("role", "user")
+             
+        if current_role != 'super_admin':
+            return {"status": "Gagal", "msg": "Akses Ditolak. Hanya Super Admin."}
 
+        # Insert Aset
+        payload = data.model_dump(exclude={"user_email"})
+        supabase.table("assets_trafo").insert(payload).execute()
+        
+        # Insert Audit Log
+        supabase.table("audit_logs").insert({
+            "user_email": data.user_email,
+            "action": "TAMBAH_TRAFO",
+            "details": f"Menambahkan {data.nama_trafo} di {data.lokasi_gi}"
+        }).execute()
+        
+        return {"status": "Sukses", "msg": "Trafo berhasil didaftarkan"}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+# --- 2. PREDICT / ANALISIS (DIGABUNG MENJADI SATU) ---
 @app.post("/predict")
 def predict(data: TrafoInput):
-    # 1. Jalankan Analisis Lengkap
+    # A. Jalankan Perhitungan Fisika/Kimia
     tdcg = hitung_tdcg(data)
     ieee_status, ieee_note = analisis_ieee_2019(data)
     rogers_res, val_r1, val_r2, val_r5 = analisis_rogers_ratio(data)
@@ -344,50 +273,30 @@ def predict(data: TrafoInput):
     duval_res, pct_ch4, pct_c2h4, pct_c2h2 = analisis_duval_triangle_1(data)
     paper_status, paper_ratio = analisis_ratio_co2_co(data)
     
-    # 2. Prediksi Machine Learning (Dengan Safety Check)
+    # B. Prediksi Machine Learning
     ml_res = "ML Not Active"
     if model_trafo:
         try:
-            # Pastikan urutan fitur sama dengan saat training!
-            # [H2, CH4, C2H2, C2H4, C2H6] <- Default urutan DGA
+            # Urutan fitur: [H2, CH4, C2H2, C2H4, C2H6]
             features = np.array([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])
             ml_res = model_trafo.predict(features)[0]
         except Exception as e:
             print(f"ML Predict Error: {e}")
             ml_res = "Error Prediction"
 
-    # 3. Analisis AI (Groq)
+    # C. Analisis AI (LLM - Groq)
     volty_chat = "AI sedang menganalisis..."
     if groq_client:
         system_prompt = """
-        Anda adalah VOLTY, Spesialis Senior Transformator Tegangan Tinggi untuk PT. PLN (Persero) UPT Manado.
-        
-        ATURAN ANALISIS:
-        1. JIKA Asetilena (C2H2) > 5 ppm, DIAGNOSA "ARCING" sebagai ancaman utama - SANGAT KRITIS!
-        2. JIKA TDCG > 720, Status adalah KRITIS dan perlu tindakan segera.
-        3. JIKA CO tinggi dengan CO2/CO ratio < 3, indikasi degradasi kertas isolasi aktif.
-        4. Jawab dalam Bahasa Indonesia dengan format Markdown.
-        5. Berikan rekomendasi aksi yang praktis dan sesuai prosedur PLN.
-        
-        STANDAR REFERENSI: IEEE C57.104-2019
-        
-        FORMAT OUTPUT:
-        **Diagnosis Utama**: [Jenis Fault & Tingkat Keparahan]
-        **Analisis Gas**: [Penjelasan logis berdasarkan data]
-        **Rekomendasi Aksi**: [3-4 poin aksi yang harus dilakukan]
+        Anda adalah VOLTY, Spesialis Senior Transformator untuk PLN UPT Manado.
+        Aturan: Jawab dalam Bahasa Indonesia, format Markdown.
+        Standar: IEEE C57.104-2019.
         """
-        
         user_prompt = f"""
-        Data DGA: H2={data.h2}, CH4={data.ch4}, C2H2={data.c2h2}, C2H4={data.c2h4}, C2H6={data.c2h6}, CO={data.co}, CO2={data.co2}.
-        
-        Hasil Teknis:
-        - IEEE Status: {ieee_status} ({ieee_note})
-        - Duval Triangle: {duval_res} (CH4:{pct_ch4}%, C2H4:{pct_c2h4}%, C2H2:{pct_c2h2}%)
-        - Rogers: {rogers_res}
-        - Isolasi Kertas: {paper_status} (Ratio: {paper_ratio})
-        - Prediksi ML: {ml_res}
+        Data: H2={data.h2}, CH4={data.ch4}, C2H2={data.c2h2}, C2H4={data.c2h4}, C2H6={data.c2h6}, CO={data.co}.
+        Hasil Teknis: IEEE={ieee_status}, Duval={duval_res}, Rogers={rogers_res}.
+        Berikan diagnosa singkat dan rekomendasi aksi.
         """
-        
         try:
             chat = groq_client.chat.completions.create(
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
@@ -399,21 +308,43 @@ def predict(data: TrafoInput):
         except Exception as e:
             volty_chat = f"Gagal memuat analisis AI: {str(e)}"
 
-    # 4. Simpan ke Database
+    # D. Simpan ke Database (Riwayat & Audit)
     if db_active and supabase:
         try:
-            record = data.model_dump() 
+            # 1. Cari Unit Pemilik berdasarkan email petugas (diambil_oleh)
+            ultg_user = "Unknown"
+            if data.diambil_oleh:
+                user_profile = supabase.table("profiles").select("unit_ultg").eq("email", data.diambil_oleh).execute()
+                
+                # 🔥 FIX TYPE CHECKING & PYLANCE SAFETY
+                if user_profile.data and isinstance(user_profile.data, list) and len(user_profile.data) > 0:
+                    profile_data = user_profile.data[0]
+                    if isinstance(profile_data, dict):
+                        ultg_user = profile_data.get("unit_ultg", "Unknown")
+
+            # 2. Simpan Riwayat
+            record = data.model_dump()
             record.update({
                 "tdcg": tdcg,
                 "status_ieee": ieee_status,
                 "diagnosa": f"Duval: {duval_res} | Rogers: {rogers_res}",
-                "hasil_ai": volty_chat
+                "hasil_ai": volty_chat,
+                "ultg_pemilik": ultg_user # Penanda kepemilikan data
             })
             supabase.table("riwayat_uji").insert(record).execute()
-        except Exception as e:
-            print(f"DB Error: {e}")
 
-    # 5. Return Response
+            # 3. Simpan Audit Log
+            if data.diambil_oleh:
+                supabase.table("audit_logs").insert({
+                    "user_email": data.diambil_oleh,
+                    "action": "UJI_DGA",
+                    "details": f"Uji {data.nama_trafo} (Hasil: {ieee_status})"
+                }).execute()
+
+        except Exception as e:
+            print(f"DB Error saat menyimpan history: {e}")
+
+    # E. Return Response ke Frontend
     return {
         "status": "Sukses",
         "tdcg_value": tdcg,
@@ -428,6 +359,31 @@ def predict(data: TrafoInput):
         "volty_chat": volty_chat
     }
 
+# --- 3. CHATBOT ---
+VOLTY_SYSTEM_PROMPT = """Anda adalah VOLTY, asisten AI PLN UPT Manado.""" 
+
+@app.post("/chat")
+def chat_with_volty(data: ChatInput):
+    if not groq_client: return {"reply": "Maaf, koneksi AI sedang offline."}
+    
+    system_msg = VOLTY_SYSTEM_PROMPT
+    if data.context:
+        system_msg += f"\n\nKONTEKS DATA TRAFO:\n{data.context}"
+        
+    try:
+        chat = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": data.message}
+            ],
+            model="llama-3.3-70b-versatile",
+            max_tokens=600
+        )
+        return {"reply": chat.choices[0].message.content}
+    except Exception as e:
+        return {"reply": f"Error AI: {str(e)}"}
+
+# --- 4. HISTORY & DELETE (DIGABUNG DAN DIPERBAIKI) ---
 @app.get("/history")
 def get_history():
     if not db_active or not supabase: return []
@@ -436,10 +392,11 @@ def get_history():
     except: return []
 
 @app.delete("/history/{item_id}")
-def delete_history(item_id: int):
+def delete_history_item(item_id: int): # Ganti nama fungsi biar unik
     if db_active and supabase: 
         try:
             supabase.table("riwayat_uji").delete().eq("id", item_id).execute()
             return {"msg": "Data deleted"}
-        except: return {"msg": "Error deleting"}
+        except Exception as e: 
+            return {"msg": f"Error deleting: {str(e)}"}
     return {"msg": "DB not active"}

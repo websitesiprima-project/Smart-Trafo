@@ -9,8 +9,11 @@ import {
   LogOut,
   FileText,
   TrendingUp,
-  ArrowLeft, // Penting untuk tombol kembali dari login
+  ArrowLeft,
   Trash2,
+  Menu,
+  X,
+  ShieldCheck,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
@@ -32,39 +35,26 @@ const TrendingPage = lazy(() => import("./components/TrendingPage"));
 const HistoryPage = lazy(() => import("./components/HistoryPage"));
 const GuidePage = lazy(() => import("./components/GuidePage"));
 const LandingPage = lazy(() => import("./components/LandingPage"));
+const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
-// ============================================
-// 🔧 TOGGLE AUTENTIKASI
-// ============================================
-// Ubah menjadi 'false' untuk disable login (development mode)
-// Ubah menjadi 'true' untuk enable login dengan Supabase
-const ENABLE_AUTH = false;
-// ============================================
+const ENABLE_AUTH = true;
 
 export default function Home() {
-  // --- STATE OTENTIKASI ---
-  // Jika auth disabled, langsung set mock session dan skip checking
-  const [session, setSession] = useState(
-    !ENABLE_AUTH ? { user: { email: "dev@pln.co.id", id: "dev-mode" }, access_token: "dev-token" } : null
-  );
-  const [authChecking, setAuthChecking] = useState(ENABLE_AUTH); // Hanya check jika auth enabled
+  const [session, setSession] = useState(null);
+  const [authChecking, setAuthChecking] = useState(ENABLE_AUTH);
 
-  // State untuk navigasi Public (Landing <-> Login)
+  // 🔥 STATE ROLE & UNIT
+  const [userRole, setUserRole] = useState(null);
+  const [userUnit, setUserUnit] = useState(null);
+
   const [showLogin, setShowLogin] = useState(false);
-  
-  // State untuk konfirmasi logout
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  
-  // State untuk konfirmasi delete all history
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
-
-  // --- STATE LAMA ---
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activePage, setActivePage] = useState("dashboard"); // Default dashboard saat login
-  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [activePage, setActivePage] = useState("dashboard");
   const [activeField, setActiveField] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // State Form & Data
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -94,106 +84,142 @@ export default function Home() {
 
   const API_URL = "http://127.0.0.1:8000";
 
-  // --- EFFECT: CEK STATUS LOGIN SUPABASE ---
+  // ===============================================
+  // 🔥 1. LOGIC AUTH YANG DIPERBAIKI (ANTI STUCK) 🔥
+  // ===============================================
   useEffect(() => {
-    // Jika autentikasi di-disable, langsung bypass dengan mock session
-    if (!ENABLE_AUTH) {
-      const mockSession = {
-        user: { email: "dev@pln.co.id", id: "dev-mode" },
-        access_token: "dev-token"
-      };
-      setSession(mockSession);
-      setAuthChecking(false);
-      console.log("🔓 Auth disabled - Running in development mode");
-      return () => {};
-    }
+    let mounted = true;
 
-    // Jika auth enabled, cek apakah Supabase dikonfigurasi dengan benar
-    const hasValidConfig = import.meta.env.VITE_SUPABASE_URL && 
-                          import.meta.env.VITE_SUPABASE_KEY &&
-                          import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
-    
-    if (!hasValidConfig) {
-      console.warn("Supabase not configured properly");
-      setAuthChecking(false);
-      setSession(null);
-      return () => {};
-    }
+    // Fungsi Ambil Profil (Terpisah agar bisa dipanggil ulang)
+    const fetchProfile = async (userId) => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("role, unit_ultg")
+          .eq("id", userId)
+          .single();
 
-    // Jika ada konfigurasi valid, coba auth normal
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setAuthChecking(false);
-    }).catch((error) => {
-      console.error("Supabase auth error:", error);
-      setAuthChecking(false);
-      setSession(null);
-    });
+        if (data && mounted) {
+          setUserRole(data.role);
+          setUserUnit(data.unit_ultg);
+          console.log("Profile Loaded:", data.role);
+        }
+      } catch (err) {
+        console.warn("Profile fetch warning:", err);
+      }
+    };
 
+    const initAuth = async () => {
+      try {
+        // Cek Environment
+        if (!ENABLE_AUTH) {
+          setSession({ user: { email: "dev@pln.co.id", id: "dev-mode" } });
+          setUserRole("super_admin");
+          setAuthChecking(false);
+          return;
+        }
+
+        // Cek Session Saat Ini
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (mounted) {
+          if (session) {
+            setSession(session);
+            // Tunggu profil terambil SEBELUM mematikan loading
+            await fetchProfile(session.user.id);
+          }
+        }
+      } catch (error) {
+        console.error("Auth Init Error:", error);
+      } finally {
+        // 🔥 KUNCI: Matikan loading apapun yang terjadi
+        if (mounted) setAuthChecking(false);
+      }
+    };
+
+    initAuth();
+
+    // Listener jika user login/logout di tab lain atau expired
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setAuthChecking(false);
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (mounted) {
+        setSession(session);
+        if (session) {
+          await fetchProfile(session.user.id);
+        } else {
+          setUserRole(null);
+          setUserUnit(null);
+        }
+        setAuthChecking(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // --- FUNGSI LOGOUT ---
-  const handleLogout = async () => {
-    setShowLogoutModal(true); // Tampilkan modal konfirmasi
-  };
+  // --- ACTIONS ---
+  const handleLogout = async () => setShowLogoutModal(true);
 
+  // --- FUNGSI LOGOUT (VERSI BERSIH & FIXED DUPLICATE) ---
   const confirmLogout = async () => {
+    setShowLogoutModal(false);
     try {
-      // Hapus riwayat chat Volty dari localStorage
-      localStorage.removeItem("volty_chat_history");
-      
-      await supabase.auth.signOut();
-      setSession(null);
-      setShowLogin(false); // Reset ke landing page setelah logout
-      setShowLogoutModal(false);
-      toast.success("Berhasil keluar akun.");
+      if (ENABLE_AUTH) {
+        await supabase.auth.signOut();
+      }
     } catch (error) {
-      toast.error("Gagal logout.");
+      console.warn("Logout error:", error);
+    } finally {
+      // Nuklir: Hapus semua sisa data di browser
+      localStorage.clear();
+      sessionStorage.clear();
+
+      setSession(null);
+      setUserRole(null);
+      setUserUnit(null);
+      setShowLogin(false);
+
+      toast.success("Berhasil keluar akun.");
+      // Optional: Force reload agar bersih total
+      // window.location.reload();
     }
   };
 
-  const cancelLogout = () => {
-    setShowLogoutModal(false);
-  };
-
-  // --- FUNGSI DELETE ALL HISTORY ---
-  const handleDeleteAllHistory = async () => {
-    setShowDeleteAllModal(true); // Tampilkan modal konfirmasi
-  };
+  const handleDeleteAllHistory = async () => setShowDeleteAllModal(true);
 
   const confirmDeleteAll = async () => {
     try {
       setLoadingHistory(true);
-      let count = 0;
-      for (const item of historyData) {
-        try {
-          await fetch(`${API_URL}/history/${item.id}`, {
-            method: "DELETE",
-            keepalive: true,
-          });
-          count++;
-        } catch (e) {
-          console.error(e);
-        }
+      if (userRole !== "super_admin" && userRole !== "admin") {
+        toast.error("Anda tidak memiliki izin menghapus data.");
+        setLoadingHistory(false);
+        setShowDeleteAllModal(false);
+        return;
       }
-      toast.success(`Berhasil menghapus ${count} data.`);
+
+      // Hapus lewat API Backend Python (karena backend handle audit log)
+      // Atau bisa langsung Supabase jika mau cepat
+      for (const item of historyData) {
+        await fetch(`${API_URL}/history/${item.id}`, {
+          method: "DELETE",
+        }).catch(console.error);
+      }
+
+      toast.success("Riwayat dihapus.");
       fetchHistory();
       setShowDeleteAllModal(false);
     } catch (error) {
-      toast.error("Gagal menghapus data.");
+      toast.error("Gagal menghapus.");
+    } finally {
+      setLoadingHistory(false);
     }
-  };
-
-  const cancelDeleteAll = () => {
-    setShowDeleteAllModal(false);
   };
 
   const toggleTheme = () => {
@@ -203,29 +229,34 @@ export default function Home() {
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
-    const val = type === "number" ? parseFloat(value) || 0 : value;
-    setFormData({ ...formData, [name]: val });
+    setFormData({
+      ...formData,
+      [name]: type === "number" ? parseFloat(value) || 0 : value,
+    });
   };
 
+  // --- FETCH HISTORY LANGSUNG DARI SUPABASE (LEBIH CEPAT) ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(`${API_URL}/history`);
-      if (!response.ok) throw new Error("Gagal ambil data");
-      const data = await response.json();
-      setHistoryData(Array.isArray(data) ? data : []);
+      const { data, error } = await supabase
+        .from("riwayat_uji")
+        .select("*")
+        .order("tanggal_sampling", { ascending: false }); // Data terbaru di atas
+
+      if (error) throw error;
+      setHistoryData(data || []);
     } catch (error) {
-      console.error("Error fetching history:", error);
-      setHistoryData([]);
+      console.error("Gagal ambil data:", error);
+      // Jangan set kosong jika error koneksi sesaat, tapi user minta refresh
+      // setHistoryData([]);
+    } finally {
+      setLoadingHistory(false);
     }
-    setLoadingHistory(false);
   };
 
-  // Fetch data hanya jika user sudah login
   useEffect(() => {
-    if (session) {
-      fetchHistory();
-    }
+    if (session) fetchHistory();
   }, [session]);
 
   const handleSubmit = async (e) => {
@@ -234,92 +265,72 @@ export default function Home() {
       toast.error("Lokasi GI dan Nama Trafo wajib diisi!");
       return;
     }
-
     setLoading(true);
+    // Simulasi delay sedikit biar kerasa "mikir"
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     try {
       const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          // Kirim email untuk audit log di backend
+          diambil_oleh: session?.user?.email || formData.diambil_oleh,
+        }),
       });
 
-      if (!response.ok) throw new Error("Gagal memproses data");
+      if (!response.ok) throw new Error("Gagal memproses");
 
       const data = await response.json();
       setResult(data);
-      toast.success("Analisis Selesai! Data tersimpan.");
-      fetchHistory();
-
-      setTimeout(() => {
-        window.scrollTo({
-          top: document.body.scrollHeight,
-          behavior: "smooth",
-        });
-      }, 100);
+      toast.success("Analisis Selesai!");
+      fetchHistory(); // Refresh tabel history
     } catch (error) {
-      console.error(error);
       toast.error("Gagal terhubung ke Server AI!");
     }
     setLoading(false);
   };
 
-  // ==========================================
-  // LOGIKA RENDER (GATEKEEPER)
-  // ==========================================
+  const navigateTo = (page) => {
+    setActivePage(page);
+    setIsSidebarOpen(false);
+  };
 
-  // 1. Loading saat cek sesi (hanya jika auth enabled)
-  if (ENABLE_AUTH && authChecking) {
+  // --- RENDER GATES ---
+  if (ENABLE_AUTH && authChecking) return <LoadingScreen />;
+
+  if (!session) {
+    if (showLogin)
+      return (
+        <>
+          <Toaster />
+          <button
+            onClick={() => setShowLogin(false)}
+            className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm hover:bg-black/50 transition"
+          >
+            <ArrowLeft size={16} /> Kembali
+          </button>
+          <LoginPage onLoginSuccess={setSession} />
+        </>
+      );
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
-        <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
-          <Zap className="text-[#1B7A8F]" size={32} />
-        </div>
-      </div>
+      <Suspense fallback={<LoadingScreen />}>
+        <LandingPage
+          onStart={() => setShowLogin(true)}
+          onGuide={() => setShowLogin(true)}
+          isDarkMode={isDarkMode}
+        />
+      </Suspense>
     );
   }
 
-  // 2. JIKA BELUM LOGIN (PUBLIC AREA)
-  if (!session) {
-    if (showLogin) {
-      // Tampilkan LOGIN PAGE + Tombol Kembali
-      return (
-        <>
-          <Toaster position="top-center" richColors />
-          <button
-            onClick={() => setShowLogin(false)}
-            className="fixed top-4 left-4 z-50 text-white/70 hover:text-white flex items-center gap-2 text-sm font-bold bg-black/30 hover:bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm transition-all"
-          >
-            <ArrowLeft size={16} /> Kembali ke Beranda
-          </button>
-          <LoginPage onLoginSuccess={(sess) => setSession(sess)} />
-        </>
-      );
-    } else {
-      // Tampilkan LANDING PAGE
-      return (
-        <Suspense fallback={
-          <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
-            <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
-              <Zap className="text-[#1B7A8F]" size={32} />
-            </div>
-          </div>
-        }>
-          <LandingPage
-            onStart={() => setShowLogin(true)} // Arahkan ke Login
-            onGuide={() => setShowLogin(true)}
-            isDarkMode={isDarkMode}
-          />
-        </Suspense>
-      );
-    }
-  }
-
-  // 3. JIKA SUDAH LOGIN (PROTECTED DASHBOARD)
+  // ============================================
+  // 🔥 RENDER UTAMA (DASHBOARD)
+  // ============================================
   return (
     <div
-      className={`flex min-h-screen font-sans transition-colors duration-500 ${
+      className={`min-h-screen font-sans transition-colors duration-500 ${
         isDarkMode
           ? "bg-[#0f172a] text-slate-200"
           : "bg-gray-100 text-slate-800"
@@ -328,101 +339,55 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* Modal Konfirmasi Delete All History */}
+      {/* --- MODALS --- */}
       {showDeleteAllModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 ${
-            isDarkMode ? "bg-[#1e293b] border border-slate-700" : "bg-white"
-          }`}>
-            <div className="flex flex-col items-center text-center">
-              {/* Icon Warning */}
-              <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mb-4">
-                <Trash2 className="text-orange-500" size={32} />
-              </div>
-              
-              {/* Title */}
-              <h3 className={`text-2xl font-bold mb-3 ${
-                isDarkMode ? "text-white" : "text-gray-900"
-              }`}>
-                Hapus Semua Data?
-              </h3>
-              
-              {/* Description */}
-              <p className={`mb-6 ${
-                isDarkMode ? "text-slate-400" : "text-gray-600"
-              }`}>
-                Apakah Anda yakin ingin menghapus <strong>{historyData.length} data</strong> dari riwayat? Tindakan ini tidak dapat dibatalkan.
-              </p>
-              
-              {/* Buttons */}
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={cancelDeleteAll}
-                  className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all ${
-                    isDarkMode 
-                      ? "bg-slate-700 hover:bg-slate-600 text-white" 
-                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
-                  }`}
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={confirmDeleteAll}
-                  className="flex-1 px-6 py-3 rounded-lg font-semibold bg-orange-500 hover:bg-orange-600 text-white transition-all"
-                >
-                  Ya, Hapus Semua
-                </button>
-              </div>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className={`p-8 rounded-2xl max-w-sm w-full text-center ${
+              isDarkMode ? "bg-slate-800" : "bg-white"
+            }`}
+          >
+            <Trash2 className="mx-auto mb-4 text-orange-500" size={40} />
+            <h3 className="text-xl font-bold mb-2">Hapus Semua?</h3>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowDeleteAllModal(false)}
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmDeleteAll}
+                className="flex-1 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+              >
+                Hapus
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Modal Konfirmasi Logout */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className={`rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 ${
-            isDarkMode ? "bg-[#1e293b] border border-slate-700" : "bg-white"
-          }`}>
-            <div className="flex flex-col items-center text-center">
-              {/* Icon Warning */}
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
-                <LogOut className="text-red-500" size={32} />
-              </div>
-              
-              {/* Title */}
-              <h3 className={`text-2xl font-bold mb-3 ${
-                isDarkMode ? "text-white" : "text-gray-900"
-              }`}>
-                Keluar Akun?
-              </h3>
-              
-              {/* Description */}
-              <p className={`mb-6 ${
-                isDarkMode ? "text-slate-400" : "text-gray-600"
-              }`}>
-                Apakah Anda yakin ingin keluar dari akun ini?
-              </p>
-              
-              {/* Buttons */}
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={cancelLogout}
-                  className={`flex-1 px-6 py-3 rounded-lg font-semibold transition-all ${
-                    isDarkMode 
-                      ? "bg-slate-700 hover:bg-slate-600 text-white" 
-                      : "bg-gray-200 hover:bg-gray-300 text-gray-800"
-                  }`}
-                >
-                  Tidak
-                </button>
-                <button
-                  onClick={confirmLogout}
-                  className="flex-1 px-6 py-3 rounded-lg font-semibold bg-red-500 hover:bg-red-600 text-white transition-all"
-                >
-                  Ya, Keluar
-                </button>
-              </div>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className={`p-8 rounded-2xl max-w-sm w-full text-center ${
+              isDarkMode ? "bg-slate-800" : "bg-white"
+            }`}
+          >
+            <LogOut className="mx-auto mb-4 text-red-500" size={40} />
+            <h3 className="text-xl font-bold mb-2">Keluar Akun?</h3>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+              >
+                Ya, Keluar
+              </button>
             </div>
           </div>
         </div>
@@ -433,125 +398,163 @@ export default function Home() {
         onClose={() => setActiveField(null)}
       />
 
-      <aside
-        className={`fixed h-full border-r flex flex-col z-20 shadow-2xl transition-colors duration-500 ${
+      {/* HEADER */}
+      <header
+        className={`fixed top-0 left-0 right-0 z-30 h-16 px-4 flex items-center justify-between shadow-sm transition-colors duration-300 backdrop-blur-md ${
           isDarkMode
-            ? "bg-[#1e293b] border-slate-700"
-            : "bg-white border-slate-200"
+            ? "bg-slate-900/80 border-b border-slate-700"
+            : "bg-white/80 border-b border-gray-200"
         }`}
-        style={{ width: `${sidebarWidth}px` }}
       >
-        <div className="p-6 flex flex-col h-full">
-          {/* HEADER SIDEBAR */}
-          <div className="flex items-center gap-3 mb-8 pb-6 border-b border-gray-200/20">
-            <div className="w-10 h-10 bg-[#FFD700] rounded-lg flex items-center justify-center shadow-lg">
-              <Zap className="text-[#1B7A8F]" size={24} />
-            </div>
-            <div>
-              <h1
-                className={`font-bold text-lg leading-tight ${
-                  isDarkMode ? "text-white" : "text-[#1B7A8F]"
-                }`}
-              >
-                PLN <span className="text-[#FFD700]">SMART</span>
-              </h1>
-              <p className="text-[10px] opacity-70 uppercase tracking-widest">
-                UPT Manado
-              </p>
-            </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className={`p-2 rounded-lg hover:bg-gray-500/10 transition active:scale-95 ${
+              isDarkMode ? "text-white" : "text-gray-800"
+            }`}
+          >
+            <Menu size={26} />
+          </button>
+          <div className="flex items-center gap-2">
+            <Zap className="text-[#1B7A8F]" size={20} fill="#1B7A8F" />
+            <h1 className="text-lg font-bold tracking-tight">
+              PLN <span className="text-[#F1C40F]">SMART</span>
+            </h1>
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden md:block">
+            <p
+              className={`text-xs font-bold ${
+                isDarkMode ? "text-white" : "text-gray-900"
+              }`}
+            >
+              {session.user.email}
+            </p>
+            <p className="text-[10px] opacity-60 uppercase font-bold text-[#1B7A8F]">
+              {userRole === "super_admin" ? "Super Admin" : userUnit || "Admin"}
+            </p>
+          </div>
+          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-500 to-cyan-400 flex items-center justify-center text-white text-sm font-bold shadow-md">
+            {session.user.email.charAt(0).toUpperCase()}
+          </div>
+        </div>
+      </header>
 
-          <nav className="space-y-2 flex-1">
-            <button
-              onClick={() => setActivePage("dashboard")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activePage === "dashboard"
-                  ? "bg-[#1B7A8F] text-white shadow-lg"
-                  : "hover:bg-gray-100/10"
-              }`}
-            >
-              <LayoutDashboard size={20} /> Dashboard Aset
-            </button>
-            <button
-              onClick={() => setActivePage("input_dga")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activePage === "input_dga"
-                  ? "bg-[#1B7A8F] text-white shadow-lg"
-                  : "hover:bg-gray-100/10"
-              }`}
-            >
-              <FileText size={20} /> Input Uji DGA
-            </button>
-            <button
-              onClick={() => setActivePage("trending")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activePage === "trending"
-                  ? "bg-[#1B7A8F] text-white shadow-lg"
-                  : "hover:bg-gray-100/10"
-              }`}
-            >
-              <TrendingUp size={20} /> Analisis Trending
-            </button>
-            <button
-              onClick={() => setActivePage("history")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activePage === "history"
-                  ? "bg-[#1B7A8F] text-white shadow-lg"
-                  : "hover:bg-gray-100/10"
-              }`}
-            >
-              <History size={20} /> Riwayat
-            </button>
-            <button
-              onClick={() => setActivePage("guide")}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activePage === "guide"
-                  ? "bg-[#1B7A8F] text-white shadow-lg"
-                  : "hover:bg-gray-100/10"
-              }`}
-            >
-              <BookOpen size={20} /> Panduan
-            </button>
-          </nav>
+      {/* SIDEBAR */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+          isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
+        }`}
+        onClick={() => setIsSidebarOpen(false)}
+      />
 
-          {/* FOOTER SIDEBAR (THEME & LOGOUT) */}
-          <div className="mt-auto pt-6 border-t border-gray-200/20 space-y-3">
-            <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
-
-            {/* TOMBOL LOGOUT */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-xs font-bold text-red-500 opacity-80 hover:opacity-100 transition-opacity w-full hover:bg-red-500/10 p-2 rounded-lg"
+      <aside
+        className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } ${
+          isDarkMode
+            ? "bg-[#1e293b] border-r border-slate-700"
+            : "bg-white border-r border-slate-200"
+        }`}
+      >
+        <div className="h-20 flex items-center justify-between px-6 border-b border-gray-500/10">
+          <div>
+            <h1
+              className={`font-bold text-xl leading-none ${
+                isDarkMode ? "text-white" : "text-[#1B7A8F]"
+              }`}
             >
-              <LogOut size={14} /> Keluar Akun
-            </button>
+              PLN <span className="text-[#FFD700]">SMART</span>
+            </h1>
+            <p className="text-[10px] opacity-60 uppercase tracking-widest mt-1">
+              UPT Manado
+            </p>
+          </div>
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="p-2 hover:bg-red-50 hover:text-red-500 rounded-full transition"
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-            {/* Info User */}
-            <div className="text-[10px] text-center opacity-40">
-              Login sebagai: {session.user.email}
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <MenuButton
+            icon={<LayoutDashboard size={20} />}
+            label="Dashboard Aset"
+            active={activePage === "dashboard"}
+            onClick={() => navigateTo("dashboard")}
+            isDarkMode={isDarkMode}
+          />
+          <MenuButton
+            icon={<FileText size={20} />}
+            label="Input Uji DGA"
+            active={activePage === "input_dga"}
+            onClick={() => navigateTo("input_dga")}
+            isDarkMode={isDarkMode}
+          />
+          <MenuButton
+            icon={<TrendingUp size={20} />}
+            label="Analisis Trending"
+            active={activePage === "trending"}
+            onClick={() => navigateTo("trending")}
+            isDarkMode={isDarkMode}
+          />
+          <MenuButton
+            icon={<History size={20} />}
+            label="Riwayat Pengujian"
+            active={activePage === "history"}
+            onClick={() => navigateTo("history")}
+            isDarkMode={isDarkMode}
+          />
+          <MenuButton
+            icon={<BookOpen size={20} />}
+            label="Panduan & Standar"
+            active={activePage === "guide"}
+            onClick={() => navigateTo("guide")}
+            isDarkMode={isDarkMode}
+          />
+
+          {userRole === "super_admin" && (
+            <div className="mt-4 pt-4 border-t border-gray-500/20 animate-in fade-in slide-in-from-left-5">
+              <p className="px-4 text-[10px] font-bold uppercase opacity-50 mb-2 tracking-widest">
+                Admin Area
+              </p>
+              <MenuButton
+                icon={<ShieldCheck size={20} className="text-purple-500" />}
+                label="Kelola Aset Master"
+                active={activePage === "super_admin"}
+                onClick={() => navigateTo("super_admin")}
+                isDarkMode={isDarkMode}
+              />
             </div>
+          )}
+        </nav>
+
+        <div className="p-4 border-t border-gray-500/10 space-y-3 bg-opacity-50">
+          <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 text-sm font-bold text-red-500 hover:bg-red-50 p-3 rounded-xl w-full transition"
+          >
+            <LogOut size={18} /> Keluar Akun
+          </button>
+          <div className="text-[10px] text-center opacity-40 pt-2">
+            v2.0 • {session.user.email}
           </div>
         </div>
       </aside>
 
-      <main
-        className="flex-1 p-4 lg:p-8 transition-all duration-300"
-        style={{ marginLeft: `${sidebarWidth}px` }}
-      >
-        <Suspense fallback={
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="w-16 h-16 bg-[#FFD700] rounded-xl flex items-center justify-center shadow-lg animate-pulse">
-              <Zap className="text-[#1B7A8F]" size={32} />
-            </div>
-          </div>
-        }>
+      {/* MAIN CONTENT */}
+      <main className="pt-20 px-4 md:px-6 pb-10 max-w-7xl mx-auto w-full">
+        <Suspense fallback={<LoadingScreen />}>
           <AnimatePresence mode="wait">
             {activePage === "dashboard" && (
               <PageTransition key="dashboard">
                 <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
               </PageTransition>
             )}
-
             {activePage === "input_dga" && (
               <PageTransition key="input_dga">
                 <InputFormPage
@@ -565,13 +568,16 @@ export default function Home() {
                 />
               </PageTransition>
             )}
-
             {activePage === "trending" && (
               <PageTransition key="trending">
-                <TrendingPage isDarkMode={isDarkMode} liveData={historyData} />
+                <TrendingPage
+                  liveData={historyData}
+                  isDarkMode={isDarkMode}
+                  userRole={userRole}
+                  userUnit={userUnit}
+                />
               </PageTransition>
             )}
-
             {activePage === "history" && (
               <PageTransition key="history">
                 <HistoryPage
@@ -580,13 +586,19 @@ export default function Home() {
                   fetchHistory={fetchHistory}
                   loadingHistory={loadingHistory}
                   onDeleteAll={handleDeleteAllHistory}
+                  userRole={userRole}
+                  userUnit={userUnit}
                 />
               </PageTransition>
             )}
-
             {activePage === "guide" && (
               <PageTransition key="guide">
                 <GuidePage isDarkMode={isDarkMode} />
+              </PageTransition>
+            )}
+            {activePage === "super_admin" && userRole === "super_admin" && (
+              <PageTransition key="super_admin">
+                <SuperAdminPage session={session} />
               </PageTransition>
             )}
           </AnimatePresence>
@@ -595,3 +607,20 @@ export default function Home() {
     </div>
   );
 }
+
+const MenuButton = ({ icon, label, active, onClick, isDarkMode }) => (
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-medium ${
+      active
+        ? "bg-[#1B7A8F] text-white shadow-lg shadow-[#1B7A8F]/30 translate-x-1"
+        : `hover:bg-gray-500/5 ${
+            isDarkMode
+              ? "text-gray-300 hover:text-white"
+              : "text-gray-600 hover:text-gray-900"
+          }`
+    }`}
+  >
+    {icon} {label}
+  </button>
+);
