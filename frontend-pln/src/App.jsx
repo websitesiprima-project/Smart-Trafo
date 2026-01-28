@@ -46,10 +46,25 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [activePage, setActivePage] = useState("dashboard");
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('pln-smart-trafo-darkmode');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [activePage, setActivePage] = useState(() => {
+    const saved = localStorage.getItem('pln-smart-trafo-activepage');
+    return saved || "dashboard";
+  });
   const [activeField, setActiveField] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Persist activePage and darkMode to localStorage
+  useEffect(() => {
+    localStorage.setItem('pln-smart-trafo-activepage', activePage);
+  }, [activePage]);
+
+  useEffect(() => {
+    localStorage.setItem('pln-smart-trafo-darkmode', JSON.stringify(isDarkMode));
+  }, [isDarkMode]);
 
   // Data State
   const [formData, setFormData] = useState({
@@ -126,13 +141,14 @@ export default function Home() {
         }
 
         const {
-          data: { session },
+          data: { session: currentSession },
         } = await supabase.auth.getSession();
 
         if (mounted) {
-          if (session) {
-            setSession(session);
-            await fetchProfile(session.user);
+          if (currentSession) {
+            console.log("✅ Session restored from storage");
+            setSession(currentSession);
+            await fetchProfile(currentSession.user);
           }
           setAuthChecking(false);
         }
@@ -146,11 +162,13 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      console.log("🔄 Auth state changed:", event);
       if (mounted) {
-        setSession(session);
-        if (session) await fetchProfile(session.user);
-        else {
+        setSession(newSession);
+        if (newSession) {
+          await fetchProfile(newSession.user);
+        } else {
           setUserRole(null);
           setUserUnit(null);
         }
@@ -175,13 +193,15 @@ export default function Home() {
     } catch (e) {
       console.warn(e);
     } finally {
-      localStorage.clear();
+      // Hanya hapus data auth, bukan semua localStorage
+      localStorage.removeItem('pln-smart-trafo-auth');
+      localStorage.removeItem('pln-smart-trafo-activepage');
       setSession(null);
       setUserRole(null);
       setUserUnit(null);
       setShowLogin(false);
+      setActivePage('dashboard'); // Reset ke default
       toast.success("Berhasil keluar.");
-      window.location.reload();
     }
   };
 
@@ -216,6 +236,7 @@ export default function Home() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
+      console.log("📊 History data loaded:", data?.length || 0, "records");
       setHistoryData(data || []);
     } catch (error) {
       console.error("Fetch error:", error);
@@ -224,9 +245,13 @@ export default function Home() {
     }
   };
 
+  // Fetch history saat session berubah (login atau restore)
   useEffect(() => {
-    if (session) fetchHistory();
-  }, [session]);
+    if (session?.user) {
+      console.log("🔄 Fetching history for user:", session.user.email);
+      fetchHistory();
+    }
+  }, [session?.user?.id]); // Gunakan user.id sebagai dependency yang lebih stabil
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -275,6 +300,33 @@ export default function Home() {
   // --- RENDER ---
   if (ENABLE_AUTH && authChecking) return <LoadingScreen />;
 
+  // Handler untuk login success yang proper
+  const handleLoginSuccess = async (newSession) => {
+    setSession(newSession);
+    if (newSession?.user) {
+      // Fetch profile setelah login
+      try {
+        if (newSession.user.email === "superadminupt@gmail.com") {
+          setUserRole("super_admin");
+          setUserUnit(null);
+        } else {
+          const { data } = await supabase
+            .from("profiles")
+            .select("role, unit_ultg")
+            .eq("id", newSession.user.id)
+            .single();
+          if (data) {
+            setUserRole(data.role);
+            setUserUnit(data.unit_ultg);
+          }
+        }
+      } catch (e) {
+        console.warn("Profile fetch error on login:", e);
+      }
+    }
+    setShowLogin(false);
+  };
+
   if (!session) {
     if (showLogin)
       return (
@@ -286,7 +338,7 @@ export default function Home() {
           >
             <ArrowLeft size={16} /> Kembali
           </button>
-          <LoginPage onLoginSuccess={setSession} />
+          <LoginPage onLoginSuccess={handleLoginSuccess} />
         </>
       );
     return (

@@ -12,7 +12,15 @@ if (!isConfigValid) {
 
 // Buat Client atau Dummy Client jika config kosong
 export const supabase = isConfigValid
-  ? createClient(supabaseUrl, supabaseKey)
+  ? createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: true,
+        storageKey: 'pln-smart-trafo-auth',
+        storage: window.localStorage,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
   : {
       from: () => ({
         select: () => ({
