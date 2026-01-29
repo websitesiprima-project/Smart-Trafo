@@ -22,6 +22,7 @@ import LoginPage from "./components/LoginPage";
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
+import VoltyMascot from "./components/VoltyMascot"; // 🔥 IMPORT MASCOT VOLTY
 import ThemeToggle from "./components/ThemeToggle";
 
 const DashboardPage = lazy(() => import("./components/DashboardPage"));
@@ -32,7 +33,25 @@ const GuidePage = lazy(() => import("./components/GuidePage"));
 const LandingPage = lazy(() => import("./components/LandingPage"));
 const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
-const ENABLE_AUTH = true;
+const API_URL = "http://127.0.0.1:8000";
+
+// 🔥 LOGIKA MAPPING AKUN
+const getAccessByEmail = (email) => {
+  const normalizedEmail = email?.toLowerCase().trim() || "";
+
+  if (normalizedEmail === "superadminupt@gmail.com")
+    return { role: "super_admin", unit: null };
+  if (normalizedEmail === "ultgsawangan@gmail.com")
+    return { role: "admin_unit", unit: "Sawangan" };
+  if (normalizedEmail === "ultglopana@gmail.com")
+    return { role: "admin_unit", unit: "Lopana" };
+  if (normalizedEmail === "ultgkotamobagu@gmail.com")
+    return { role: "admin_unit", unit: "Kotamobagu" };
+  if (normalizedEmail === "ultggorontalo@gmail.com")
+    return { role: "admin_unit", unit: "Gorontalo" };
+
+  return { role: "viewer", unit: null };
+};
 
 export default function Home() {
   const [session, setSession] = useState(null);
@@ -46,24 +65,30 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+
+  // 🔥 STATE BARU: STATUS LOGOUT
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('pln-smart-trafo-darkmode');
+    const saved = localStorage.getItem("pln-smart-trafo-darkmode");
     return saved ? JSON.parse(saved) : false;
   });
   const [activePage, setActivePage] = useState(() => {
-    const saved = localStorage.getItem('pln-smart-trafo-activepage');
+    const saved = localStorage.getItem("pln-smart-trafo-activepage");
     return saved || "dashboard";
   });
   const [activeField, setActiveField] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Persist activePage and darkMode to localStorage
+  // Persist settings
   useEffect(() => {
-    localStorage.setItem('pln-smart-trafo-activepage', activePage);
+    localStorage.setItem("pln-smart-trafo-activepage", activePage);
   }, [activePage]);
-
   useEffect(() => {
-    localStorage.setItem('pln-smart-trafo-darkmode', JSON.stringify(isDarkMode));
+    localStorage.setItem(
+      "pln-smart-trafo-darkmode",
+      JSON.stringify(isDarkMode),
+    );
   }, [isDarkMode]);
 
   // Data State
@@ -93,81 +118,33 @@ export default function Home() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const API_URL = "http://127.0.0.1:8000";
-
-  // ===============================================
-  // 🔥 AUTH LOGIC
-  // ===============================================
+  // --- AUTH LOGIC ---
   useEffect(() => {
     let mounted = true;
-
-    const safetyTimer = setTimeout(() => {
-      if (mounted && authChecking) {
-        console.warn("⚠️ Auth timeout. Memaksa masuk aplikasi.");
+    const initAuth = async () => {
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+      if (mounted) {
+        if (currentSession) {
+          setSession(currentSession);
+          const access = getAccessByEmail(currentSession.user.email);
+          setUserRole(access.role);
+          setUserUnit(access.unit);
+        }
         setAuthChecking(false);
       }
-    }, 3000);
-
-    const fetchProfile = async (user) => {
-      try {
-        if (user.email === "superadminupt@gmail.com") {
-          setUserRole("super_admin");
-          setUserUnit(null);
-          console.log("🚀 Force Login: SUPER ADMIN");
-          return;
-        }
-        const { data } = await supabase
-          .from("profiles")
-          .select("role, unit_ultg")
-          .eq("id", user.id)
-          .single();
-
-        if (mounted && data) {
-          setUserRole(data.role);
-          setUserUnit(data.unit_ultg);
-        }
-      } catch (e) {
-        console.warn("Profile fetch error", e);
-      }
     };
-
-    const initAuth = async () => {
-      try {
-        if (!ENABLE_AUTH) {
-          setSession({ user: { email: "dev@pln.co.id" } });
-          setUserRole("super_admin");
-          if (mounted) setAuthChecking(false);
-          return;
-        }
-
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession();
-
-        if (mounted) {
-          if (currentSession) {
-            console.log("✅ Session restored from storage");
-            setSession(currentSession);
-            await fetchProfile(currentSession.user);
-          }
-          setAuthChecking(false);
-        }
-      } catch (error) {
-        console.error("Auth init error:", error);
-        if (mounted) setAuthChecking(false);
-      }
-    };
-
     initAuth();
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log("🔄 Auth state changed:", event);
       if (mounted) {
         setSession(newSession);
         if (newSession) {
-          await fetchProfile(newSession.user);
+          const access = getAccessByEmail(newSession.user.email);
+          setUserRole(access.role);
+          setUserUnit(access.unit);
         } else {
           setUserRole(null);
           setUserUnit(null);
@@ -175,89 +152,95 @@ export default function Home() {
         setAuthChecking(false);
       }
     });
-
     return () => {
       mounted = false;
-      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
-  // --- ACTIONS ---
-  const handleLogout = () => setShowLogoutModal(true);
-
-  const confirmLogout = async () => {
-    setShowLogoutModal(false);
+  // --- 🔥 CORE: DATA SYNC (REALTIME) ---
+  const fetchHistory = async () => {
+    setLoadingHistory(true);
     try {
-      if (ENABLE_AUTH) await supabase.auth.signOut();
-    } catch (e) {
-      console.warn(e);
+      let query = supabase
+        .from("riwayat_uji")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setHistoryData(data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal sinkronisasi data.");
     } finally {
-      // Hanya hapus data auth, bukan semua localStorage
-      localStorage.removeItem('pln-smart-trafo-auth');
-      localStorage.removeItem('pln-smart-trafo-activepage');
-      setSession(null);
-      setUserRole(null);
-      setUserUnit(null);
-      setShowLogin(false);
-      setActivePage('dashboard'); // Reset ke default
-      toast.success("Berhasil keluar.");
+      setLoadingHistory(false);
     }
   };
 
-  const handleDeleteAllHistory = () => setShowDeleteAllModal(true);
+  useEffect(() => {
+    if (session?.user) {
+      fetchHistory();
+    }
+  }, [session]);
 
+  useEffect(() => {
+    if (!session?.user) return;
+    const channel = supabase
+      .channel("public:riwayat_uji")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "riwayat_uji" },
+        (payload) => {
+          console.log("Database Berubah!", payload);
+          fetchHistory();
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session]);
+
+  // --- 🔥 MODIFIKASI HANDLER LOGOUT ---
+  const handleLogout = async () => {
+    setShowLogoutModal(false);
+    setIsLoggingOut(true); // 1. Aktifkan Layar Loading Volty
+
+    // 2. Tunggu 3 Detik
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // 3. Proses Logout Asli
+    await supabase.auth.signOut();
+    localStorage.removeItem("pln-smart-trafo-auth");
+    setSession(null);
+    setUserRole(null);
+    setUserUnit(null);
+    setShowLogin(false);
+    setActivePage("dashboard");
+
+    setIsLoggingOut(false); // Matikan loading
+    toast.success("Berhasil keluar.");
+  };
+
+  const handleDeleteAllHistory = () => setShowDeleteAllModal(true);
   const confirmDeleteAll = async () => {
     setLoadingHistory(true);
     try {
-      if (userRole !== "super_admin") {
-        toast.error("Hanya Super Admin yang bisa menghapus semua data.");
-        return;
-      }
-      for (const item of historyData) {
+      if (userRole !== "super_admin") return toast.error("Akses ditolak.");
+      for (const item of historyData)
         await supabase.from("riwayat_uji").delete().eq("id", item.id);
-      }
-      toast.success("Data berhasil direset.");
-      fetchHistory();
-    } catch (e) {
-      toast.error("Gagal menghapus data.");
+      toast.success("Data direset.");
+    } catch {
+      toast.error("Gagal hapus.");
     } finally {
       setLoadingHistory(false);
       setShowDeleteAllModal(false);
     }
   };
 
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
-    try {
-      const { data, error } = await supabase
-        .from("riwayat_uji")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      console.log("📊 History data loaded:", data?.length || 0, "records");
-      setHistoryData(data || []);
-    } catch (error) {
-      console.error("Fetch error:", error);
-    } finally {
-      setLoadingHistory(false);
-    }
-  };
-
-  // Fetch history saat session berubah (login atau restore)
-  useEffect(() => {
-    if (session?.user) {
-      console.log("🔄 Fetching history for user:", session.user.email);
-      fetchHistory();
-    }
-  }, [session?.user?.id]); // Gunakan user.id sebagai dependency yang lebih stabil
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-    setActiveField("theme");
-  };
-
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
   const handleChange = (e) => {
     const { name, value, type } = e.target;
     setFormData({
@@ -266,27 +249,105 @@ export default function Home() {
     });
   };
 
+  const findUnitByGI = (giName) => {
+    const MAPPING = {
+      Lopana: [
+        "GI Lopana",
+        "GI Amurang",
+        "GI Kawangkoan",
+        "PLTP Lahendong",
+        "GI Tomohon",
+        "GI Tasikria",
+        "GI Tonsealama",
+        "GI Sawangan",
+        "PLTA Tanggari",
+      ],
+      Sawangan: [
+        "GI Teling",
+        "GIS Teling",
+        "GIS Sario",
+        "GI Bitung",
+        "GI Likupang",
+        "GI Paniki",
+        "GI Tanjung Merah",
+        "GI Ranomuut",
+        "GI Kema",
+        "GI Pandu",
+        "GI MSM",
+      ],
+      Kotamobagu: [
+        "GI Kotamobagu",
+        "GI Lolak",
+        "GI Otam",
+        "PLTU SULUT",
+        "GI Tutuyan",
+        "GI Molibagu",
+      ],
+      Gorontalo: [
+        "GI Gorontalo",
+        "GI Isimu",
+        "GI Marisa",
+        "GI Botupingge",
+        "GI Kwandang",
+        "GI Boroko",
+        "GI Anggrek",
+        "GI Tolinggula",
+        "GI Tilamuta",
+        "PLTG Maleo",
+        "PT BJA",
+      ],
+    };
+    const search = (giName || "").toUpperCase();
+    for (const [unit, list] of Object.entries(MAPPING)) {
+      if (list.some((g) => search.includes(g.toUpperCase().replace("GI ", ""))))
+        return unit;
+    }
+    return userUnit || "Lainnya";
+  };
+
+  // --- SUBMIT HANDLER YANG SUDAH DIPERBAIKI ---
   const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
+    e.preventDefault();
     if (!formData.lokasi_gi || !formData.nama_trafo)
-      return toast.error("Lokasi & Trafo wajib diisi!");
+      return toast.error("Isi Lokasi & Trafo!");
 
     setLoading(true);
     try {
+      const payload = { ...formData, diambil_oleh: session?.user?.email };
+
       const res = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          diambil_oleh: session?.user?.email,
-        }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      setResult(data);
-      toast.success("Analisis Selesai!");
-      fetchHistory();
-    } catch {
-      toast.error("Gagal koneksi ke AI Server!");
+      if (!res.ok) throw new Error("Gagal koneksi AI");
+      const resultData = await res.json();
+      setResult(resultData);
+
+      let finalOwner = "Lainnya";
+      if (userUnit) finalOwner = userUnit;
+      else finalOwner = findUnitByGI(formData.lokasi_gi);
+
+      // 🔥 FIX: HAPUS KEY_GAS & JENIS_MINYAK SEBELUM KIRIM
+      const { jenis_minyak, key_gas, ...cleanFormData } = formData;
+
+      const dataToSave = {
+        ...cleanFormData,
+        tdcg: resultData.tdcg_value || 0,
+        status_ieee: resultData.ieee_status || "Normal",
+        diagnosa: resultData.rogers_diagnosis || "-",
+        ultg_pemilik: finalOwner,
+        diambil_oleh: session?.user?.email,
+        created_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
+      if (error) throw error;
+
+      toast.success(`Tersimpan ke ${finalOwner}`);
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -297,51 +358,47 @@ export default function Home() {
     setIsSidebarOpen(false);
   };
 
-  // --- RENDER ---
-  if (ENABLE_AUTH && authChecking) return <LoadingScreen />;
+  if (authChecking) return <LoadingScreen />;
 
-  // Handler untuk login success yang proper
-  const handleLoginSuccess = async (newSession) => {
-    setSession(newSession);
-    if (newSession?.user) {
-      // Fetch profile setelah login
-      try {
-        if (newSession.user.email === "superadminupt@gmail.com") {
-          setUserRole("super_admin");
-          setUserUnit(null);
-        } else {
-          const { data } = await supabase
-            .from("profiles")
-            .select("role, unit_ultg")
-            .eq("id", newSession.user.id)
-            .single();
-          if (data) {
-            setUserRole(data.role);
-            setUserUnit(data.unit_ultg);
-          }
-        }
-      } catch (e) {
-        console.warn("Profile fetch error on login:", e);
-      }
-    }
-    setShowLogin(false);
-  };
+  // 🔥 TAMPILAN LOADING LOGOUT (MENGGUNAKAN VoltyMascot.jsx)
+  if (isLoggingOut) {
+    return (
+      <div
+        className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-all duration-500 ${isDarkMode ? "bg-[#0f172a]" : "bg-white"}`}
+      >
+        <div className="text-center animate-bounce mb-6">
+          {/* 🔥 GUNAKAN KOMPONEN VOLTY DI SINI */}
+          <div className="w-40 h-40 mx-auto">
+            <VoltyMascot />
+          </div>
+        </div>
+        <h2
+          className={`text-3xl font-bold animate-pulse ${isDarkMode ? "text-white" : "text-[#1B7A8F]"}`}
+        >
+          Sampai Jumpa!
+        </h2>
+        <p
+          className={`mt-2 text-sm ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
+        >
+          Hati-hati di jalan, {session?.user?.email?.split("@")[0]}...
+        </p>
+      </div>
+    );
+  }
 
   if (!session) {
-    if (showLogin)
-      return (
-        <>
-          <Toaster />
-          <button
-            onClick={() => setShowLogin(false)}
-            className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm"
-          >
-            <ArrowLeft size={16} /> Kembali
-          </button>
-          <LoginPage onLoginSuccess={handleLoginSuccess} />
-        </>
-      );
-    return (
+    return showLogin ? (
+      <>
+        <Toaster />
+        <button
+          onClick={() => setShowLogin(false)}
+          className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm"
+        >
+          <ArrowLeft size={16} /> Kembali
+        </button>
+        <LoginPage onLoginSuccess={() => setShowLogin(false)} />
+      </>
+    ) : (
       <Suspense fallback={<LoadingScreen />}>
         <LandingPage
           onStart={() => setShowLogin(true)}
@@ -354,25 +411,44 @@ export default function Home() {
 
   return (
     <div
-      className={`min-h-screen font-sans transition-colors duration-500 ${
-        isDarkMode
-          ? "bg-[#0f172a] text-slate-200"
-          : "bg-gray-100 text-slate-800"
-      }`}
+      className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? "bg-[#0f172a] text-slate-200" : "bg-gray-100 text-slate-800"}`}
     >
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* Modal Delete */}
+      {/* MODALS */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div
+            className={`p-8 rounded-2xl max-w-sm w-full text-center ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
+          >
+            <LogOut className="mx-auto mb-4 text-red-500" size={40} />
+            <h3 className="text-xl font-bold mb-6">Keluar Akun?</h3>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 py-2 bg-red-500 text-white rounded-lg"
+              >
+                Ya, Keluar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteAllModal && (
         <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
-            className={`p-8 rounded-2xl max-w-sm w-full text-center ${
-              isDarkMode ? "bg-slate-800" : "bg-white"
-            }`}
+            className={`p-8 rounded-2xl max-w-sm w-full text-center ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
           >
             <Trash2 className="mx-auto mb-4 text-orange-500" size={40} />
-            <h3 className="text-xl font-bold mb-6">Hapus Semua Data?</h3>
+            <h3 className="text-xl font-bold mb-6">Reset Data?</h3>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteAllModal(false)}
@@ -391,51 +467,19 @@ export default function Home() {
         </div>
       )}
 
-      {/* Modal Logout */}
-      {showLogoutModal && (
-        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div
-            className={`p-8 rounded-2xl max-w-sm w-full text-center ${
-              isDarkMode ? "bg-slate-800" : "bg-white"
-            }`}
-          >
-            <LogOut className="mx-auto mb-4 text-red-500" size={40} />
-            <h3 className="text-xl font-bold mb-6">Keluar Akun?</h3>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowLogoutModal(false)}
-                className="flex-1 py-2 bg-gray-200 text-gray-800 rounded-lg"
-              >
-                Batal
-              </button>
-              <button
-                onClick={confirmLogout}
-                className="flex-1 py-2 bg-red-500 text-white rounded-lg"
-              >
-                Ya, Keluar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <VoltyAssistant
         activeField={activeField}
         onClose={() => setActiveField(null)}
       />
 
-      {/* Header */}
+      {/* HEADER */}
       <header
-        className={`fixed top-0 left-0 right-0 z-30 h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${
-          isDarkMode
-            ? "bg-slate-900/80 border-b border-slate-700"
-            : "bg-white/80 border-b border-gray-200"
-        }`}
+        className={`fixed top-0 z-30 w-full h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${isDarkMode ? "bg-slate-900/80" : "bg-white/80"}`}
       >
         <div className="flex items-center gap-4">
           <button
             onClick={() => setIsSidebarOpen(true)}
-            className="p-2 rounded-lg hover:bg-gray-500/10"
+            className="p-2 hover:bg-gray-500/10 rounded-lg"
           >
             <Menu size={26} />
           </button>
@@ -446,44 +490,29 @@ export default function Home() {
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-right">
-          <div className="hidden md:block">
-            <p
-              className={`text-xs font-bold ${
-                isDarkMode ? "text-white" : "text-gray-900"
-              }`}
-            >
-              {session.user.email}
-            </p>
-            <p className="text-[10px] font-bold text-[#1B7A8F] uppercase tracking-wider">
-              {userRole === "super_admin" ? "SUPER ADMIN" : userUnit || "ADMIN"}
-            </p>
-          </div>
-          <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
-            {session.user.email.charAt(0).toUpperCase()}
-          </div>
+        <div className="hidden md:block text-right">
+          <p
+            className={`text-xs font-bold ${isDarkMode ? "text-white" : "text-gray-900"}`}
+          >
+            {session.user.email}
+          </p>
+          <p className="text-[10px] font-bold text-[#1B7A8F] uppercase tracking-wider">
+            {userRole === "super_admin" ? "SUPER ADMIN" : userUnit}
+          </p>
         </div>
       </header>
 
-      {/* Sidebar Overlay */}
+      {/* SIDEBAR */}
       <div
-        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${
-          isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"
-        }`}
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}
         onClick={() => setIsSidebarOpen(false)}
       />
-
-      {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transition-transform duration-300 flex flex-col ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } ${isDarkMode ? "bg-[#1e293b]" : "bg-white"}`}
+        className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} ${isDarkMode ? "bg-[#1e293b]" : "bg-white"}`}
       >
         <div className="h-20 flex items-center justify-between px-6 border-b border-gray-500/10">
           <h1
-            className={`font-bold text-xl ${
-              isDarkMode ? "text-white" : "text-[#1B7A8F]"
-            }`}
+            className={`font-bold text-xl ${isDarkMode ? "text-white" : "text-[#1B7A8F]"}`}
           >
             PLN <span className="text-[#F1C40F]">SMART</span>
           </h1>
@@ -491,7 +520,6 @@ export default function Home() {
             <X size={20} />
           </button>
         </div>
-
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <MenuButton
             icon={<LayoutDashboard size={20} />}
@@ -530,7 +558,7 @@ export default function Home() {
           />
 
           {userRole === "super_admin" && (
-            <div className="mt-4 pt-4 border-t border-gray-500/20">
+            <div className="pt-4 mt-4 border-t border-gray-500/20">
               <p className="px-4 text-[10px] font-bold uppercase opacity-50 mb-2 tracking-widest">
                 Admin Area
               </p>
@@ -544,11 +572,10 @@ export default function Home() {
             </div>
           )}
         </nav>
-
         <div className="p-4 border-t border-gray-500/10 space-y-3">
           <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutModal(true)}
             className="flex items-center gap-3 text-sm font-bold text-red-500 hover:bg-red-50 p-3 rounded-xl w-full transition"
           >
             <LogOut size={18} /> Keluar
@@ -556,19 +583,20 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main Content */}
-      {/* 🔥 INI KUNCI FULL SCREEN: HAPUS max-w-7xl dan mx-auto */}
+      {/* CONTENT */}
       <main
-        className={`
-            pt-20 pb-10 w-full min-h-screen transition-all duration-300
-            ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"} 
-        `}
+        className={`pt-20 pb-10 w-full min-h-screen transition-all duration-300 ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"}`}
       >
         <Suspense fallback={<LoadingScreen />}>
           <AnimatePresence mode="wait">
             {activePage === "dashboard" && (
               <PageTransition key="dash">
-                <DashboardPage isDarkMode={isDarkMode} liveData={historyData} />
+                <DashboardPage
+                  isDarkMode={isDarkMode}
+                  liveData={historyData}
+                  userRole={userRole}
+                  userUnit={userUnit}
+                />
               </PageTransition>
             )}
             {activePage === "input_dga" && (
@@ -589,8 +617,8 @@ export default function Home() {
             {activePage === "trending" && (
               <PageTransition key="trend">
                 <TrendingPage
-                  liveData={historyData}
                   isDarkMode={isDarkMode}
+                  liveData={historyData}
                   userRole={userRole}
                   userUnit={userUnit}
                 />
@@ -614,7 +642,6 @@ export default function Home() {
                 <GuidePage isDarkMode={isDarkMode} />
               </PageTransition>
             )}
-
             {activePage === "super_admin" && userRole === "super_admin" && (
               <PageTransition key="admin">
                 <SuperAdminPage session={session} />
@@ -630,15 +657,7 @@ export default function Home() {
 const MenuButton = ({ icon, label, active, onClick, isDarkMode }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-medium ${
-      active
-        ? "bg-[#1B7A8F] text-white shadow-lg translate-x-1"
-        : `hover:bg-gray-500/5 ${
-            isDarkMode
-              ? "text-gray-300 hover:text-white"
-              : "text-gray-600 hover:text-gray-900"
-          }`
-    }`}
+    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 font-medium ${active ? "bg-[#1B7A8F] text-white shadow-lg translate-x-1" : `hover:bg-gray-500/5 ${isDarkMode ? "text-gray-300 hover:text-white" : "text-gray-600 hover:text-gray-900"}`}`}
   >
     {icon} {label}
   </button>

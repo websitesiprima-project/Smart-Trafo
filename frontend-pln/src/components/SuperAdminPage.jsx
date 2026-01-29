@@ -18,12 +18,13 @@ import {
   UploadCloud,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { supabase } from "../lib/supabaseClient"; // 🔥 IMPORT SUPABASE CLIENT
 
 // Import Data
 import { ultgData, trafoDatabase } from "../data/assetData";
 
 // ============================================================================
-// 🔥 PERBAIKAN: KOMPONEN INPUTDIPINDAHKAN KE LUAR (AGAR TIDAK HILANG FOKUS)
+// KOMPONEN INPUT
 // ============================================================================
 const PLNInput = ({
   label,
@@ -71,41 +72,35 @@ const SuperAdminPage = ({ session }) => {
     level_tegangan: "",
   });
 
-  // --- FUNGSI UNTUK MENGURUTKAN TRAFO ---
+  // --- FUNGSI SORTING ---
   const sortTrafos = (trafos) => {
     return [...trafos].sort((a, b) => {
       const aName = a.nama_trafo || "";
       const bName = b.nama_trafo || "";
-
-      // Extract tipe (TD, GT, IBT, dll) dan nomor
       const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
       const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
-
       if (!aMatch || !bMatch) return aName.localeCompare(bName);
-
-      const aType = aMatch[1].toUpperCase();
-      const bType = bMatch[1].toUpperCase();
-      const aNum = parseInt(aMatch[2], 10);
-      const bNum = parseInt(bMatch[2], 10);
-
-      // Urutan prioritas: TD, GT, IBT, lainnya
       const typeOrder = { TD: 1, GT: 2, IBT: 3 };
-      const aOrder = typeOrder[aType] || 999;
-      const bOrder = typeOrder[bType] || 999;
-
+      const aOrder = typeOrder[aMatch[1].toUpperCase()] || 999;
+      const bOrder = typeOrder[bMatch[1].toUpperCase()] || 999;
       if (aOrder !== bOrder) return aOrder - bOrder;
-      return aNum - bNum;
+      return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
     });
   };
 
-  // --- 1. FETCH DATA ASET ---
+  // 🔥 1. FETCH DATA LANGSUNG DARI SUPABASE (Bypass Python agar data pasti muncul)
   const fetchAssets = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/assets");
-      const data = await res.json();
-      setAssetList(Array.isArray(data) ? data : []);
+      const { data, error } = await supabase
+        .from("assets_trafo")
+        .select("*")
+        .order("lokasi_gi", { ascending: true });
+
+      if (error) throw error;
+      setAssetList(data || []);
     } catch (error) {
-      console.error("Gagal ambil data aset", error);
+      console.error("Gagal ambil data aset:", error);
+      toast.error("Gagal memuat data aset dari database.");
     }
   };
 
@@ -113,85 +108,129 @@ const SuperAdminPage = ({ session }) => {
     fetchAssets();
   }, []);
 
-  // --- 2. FITUR IMPORT DATA ---
+  // helper untuk mencari ULTG dari Nama GI (untuk import otomatis)
+  const findUltgByGI = (giName) => {
+    for (const [ultgKey, data] of Object.entries(ultgData)) {
+      if (data.gis.some((g) => g.name === giName)) {
+        // Return Capitalize (misal: "Sawangan")
+        return data.name.replace("ULTG ", "");
+      }
+    }
+    return "Unknown";
+  };
+
+  // 🔥 2. FITUR IMPORT DATA (LANGSUNG KE SUPABASE)
   const handleImportDefaults = async () => {
     if (
       !window.confirm(
-        "Apakah Anda yakin ingin mengimpor semua data dari 'assetData.js' ke Database? Ini mungkin memakan waktu beberapa detik."
+        "Import semua data dari file 'assetData.js' ke Database? Data ganda mungkin terjadi jika tidak direset dulu.",
       )
     )
       return;
 
     setIsImporting(true);
-    let successCount = 0;
-    let failCount = 0;
-
     try {
+      const payload = [];
+
+      // Susun data dari file statis
       for (const [giName, trafos] of Object.entries(trafoDatabase)) {
+        const detectedUltg = findUltgByGI(giName);
+
         for (const t of trafos) {
-          const payload = {
-            nama_trafo: t.name,
+          payload.push({
             lokasi_gi: giName,
+            nama_trafo: t.name,
             merk: t.merk || "-",
             serial_number: t.sn || "-",
             tahun_pembuatan: t.year || "-",
             level_tegangan: t.volt || "-",
-            user_email: session?.user?.email || "system_import",
-          };
-
-          try {
-            await fetch("http://127.0.0.1:8000/assets/add", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-            successCount++;
-          } catch (e) {
-            console.error("Gagal import:", t.name, e);
-            failCount++;
-          }
+            unit_ultg: detectedUltg, // Auto detect unit
+            op_status: t.op_status || "Operasi",
+            status: "Normal",
+          });
         }
       }
-      toast.success(
-        `Import Selesai! Sukses: ${successCount}, Gagal: ${failCount}`
-      );
+
+      // Kirim Batch Insert ke Supabase
+      const { error } = await supabase.from("assets_trafo").insert(payload);
+
+      if (error) throw error;
+
+      toast.success(`Berhasil mengimpor ${payload.length} aset!`);
       fetchAssets();
     } catch (error) {
-      toast.error("Terjadi kesalahan sistem saat import.");
+      console.error("Import error:", error);
+      toast.error("Gagal import data: " + error.message);
     } finally {
       setIsImporting(false);
     }
   };
 
-  // --- 3. DELETE ASET ---
+  // 🔥 3. DELETE ASET (LANGSUNG SUPABASE)
   const handleDelete = async (id, nama) => {
-    if (
-      !window.confirm(
-        `Yakin ingin menghapus aset master "${nama}"? Data ini akan hilang permanen dari sistem.`
-      )
-    )
-      return;
+    if (!window.confirm(`Hapus permanen aset "${nama}"?`)) return;
 
     setLoadingDelete(id);
     try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/assets/delete/${id}?user_email=${session?.user?.email}`,
-        {
-          method: "DELETE",
-        }
-      );
-      const result = await res.json();
+      const { error } = await supabase
+        .from("assets_trafo")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
 
-      if (result.status === "Sukses") {
-        toast.success(result.msg);
-        fetchAssets();
-      } else {
-        toast.error(result.msg);
-      }
+      toast.success("Aset berhasil dihapus.");
+      fetchAssets();
     } catch (error) {
       toast.error("Gagal menghapus aset.");
     } finally {
       setLoadingDelete(null);
+    }
+  };
+
+  // 🔥 4. TAMBAH ASET (LANGSUNG SUPABASE)
+  const handleAddTrafo = async (e) => {
+    e.preventDefault();
+    if (!formData.lokasi_gi || !formData.nama_trafo || !formData.merk) {
+      toast.error("Mohon lengkapi data wajib!");
+      return;
+    }
+    setLoading(true);
+    try {
+      // Mapping unit key (sawangan -> Sawangan)
+      const unitName = formData.ultg
+        ? ultgData[formData.ultg]?.name.replace("ULTG ", "")
+        : "Unknown";
+
+      const { error } = await supabase.from("assets_trafo").insert([
+        {
+          ...formData,
+          unit_ultg: unitName, // Pastikan kolom ini terisi
+          serial_number: formData.serial_number || "-",
+          tahun_pembuatan: formData.tahun_pembuatan || "-",
+          level_tegangan: formData.level_tegangan || "-",
+          status: "Normal",
+          op_status: "Operasi",
+        },
+      ]);
+
+      if (error) throw error;
+
+      toast.success("Aset berhasil disimpan!");
+      setFormData({
+        ultg: "",
+        lokasi_gi: "",
+        nama_trafo: "",
+        merk: "",
+        serial_number: "",
+        tahun_pembuatan: "",
+        level_tegangan: "",
+      });
+      fetchAssets();
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal menyimpan: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -204,55 +243,13 @@ const SuperAdminPage = ({ session }) => {
     }));
   };
 
-  const handleAddTrafo = async (e) => {
-    e.preventDefault();
-    if (!formData.lokasi_gi || !formData.nama_trafo || !formData.merk) {
-      toast.error("Mohon lengkapi data wajib (GI, Nama Trafo, Merk)!");
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch("http://127.0.0.1:8000/assets/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          serial_number: formData.serial_number || "-",
-          tahun_pembuatan: formData.tahun_pembuatan || "-",
-          level_tegangan: formData.level_tegangan || "-",
-          user_email: session?.user?.email,
-        }),
-      });
-      const result = await response.json();
-      if (result.status === "Sukses") {
-        toast.success("Aset berhasil didaftarkan.");
-        setFormData({
-          ultg: "",
-          lokasi_gi: "",
-          nama_trafo: "",
-          merk: "",
-          serial_number: "",
-          tahun_pembuatan: "",
-          level_tegangan: "",
-        });
-        fetchAssets();
-      } else {
-        toast.error(result.msg);
-      }
-    } catch (error) {
-      toast.error("Gagal koneksi server.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const filteredAssets = sortTrafos(
     assetList.filter(
       (item) =>
         item.nama_trafo.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.lokasi_gi.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.merk.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+        item.merk.toLowerCase().includes(searchTerm.toLowerCase()),
+    ),
   );
 
   return (
@@ -421,6 +418,8 @@ const SuperAdminPage = ({ session }) => {
                         <option value="70/20 kV">70/20 kV</option>
                         <option value="150 kV">150 kV</option>
                         <option value="275 kV">275 kV</option>
+                        <option value="70 kV">70 kV</option>
+                        <option value="30 kV">30 kV</option>
                       </select>
                       <ChevronDown
                         className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"
@@ -510,7 +509,7 @@ const SuperAdminPage = ({ session }) => {
                     Merk
                   </th>
                   <th className="p-4 text-xs font-bold text-gray-500 uppercase hidden md:table-cell">
-                    S/N
+                    ULTG
                   </th>
                   <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center">
                     Aksi
@@ -556,8 +555,10 @@ const SuperAdminPage = ({ session }) => {
                       <td className="p-4 text-sm text-gray-600 hidden md:table-cell">
                         {asset.merk}
                       </td>
-                      <td className="p-4 text-sm text-gray-600 hidden md:table-cell font-mono">
-                        {asset.serial_number}
+                      <td className="p-4 text-sm text-gray-600 hidden md:table-cell">
+                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">
+                          {asset.unit_ultg || "-"}
+                        </span>
                       </td>
                       <td className="p-4 text-center">
                         <button

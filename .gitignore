@@ -15,6 +15,5 @@ venv/
 env/
 
 # --- FILE BERAT / DATA ---
-*.pkl
 *.db
 pln_database.db

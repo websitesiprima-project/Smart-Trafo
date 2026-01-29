@@ -18,6 +18,8 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Edit2,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,34 +29,51 @@ import {
 import DuvalPentagon from "./DuvalPentagon";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { supabase } from "../lib/supabaseClient";
 
-// --- 1. DEFINISI MAPPING (WAJIB ADA) ---
+// --- 1. DEFINISI MAPPING ---
 const ULTG_MAPPING = {
   Lopana: [
-    "GI Lopana",
-    "GI Amurang",
-    "GI Tumpaan",
-    "GI Motoling",
-    "GI Ratahan",
-    "Lopana",
-    "Amurang",
+    "GI AMURANG",
+    "GI LOPANA",
+    "GI KAWANGKOAN",
+    "PLTP LAHENDONG 12",
+    "PLTP LAHENDONG 34",
+    "GI TOMOHON",
+    "GI TASIKRIA",
+    "GI TONSEALAMA",
+    "GI SAWANGAN",
   ],
   Sawangan: [
-    "GI Sawangan",
-    "GI Teling",
-    "GI Bitung",
-    "GI Likupang",
-    "GI Likupang New",
-    "GI Paniki",
-    "GI Tanjung Merah",
+    "GI TELING",
+    "GIS TELING",
+    "GIS SARIO",
+    "GI KEMA",
+    "GI TANJUNG MERAH",
+    "GI BITUNG",
+    "GI RANOMUUT",
+    "GI PANIKI",
+    "GI PANDU",
+    "GI LIKUPANG",
+    "GI LIKUPANG NEW",
+    "GI MSM",
   ],
-  Kotamobagu: ["GI Kotamobagu", "GI Lolak", "GI Boroko", "GI Otam"],
+  Kotamobagu: [
+    "PLTU SULUT 1",
+    "GI LOLAK",
+    "GI MOLIBAGU",
+    "GI OTAM",
+    "GI TUTUYAN",
+  ],
   Gorontalo: [
-    "GI Gorontalo",
-    "GI Isimu",
-    "GI Marisa",
-    "GI Botupingge",
-    "GI Kwandang",
+    "GI MARISA",
+    "GI TILAMUTA",
+    "GI TOLINGGULA",
+    "GI ANGGREK",
+    "GI ISIMU",
+    "GI GORONTALO BARU",
+    "GI BOTUPINGGE",
+    "GI BOROKO",
   ],
 };
 
@@ -64,61 +83,148 @@ const HistoryPage = ({
   fetchHistory,
   loadingHistory,
   onDeleteAll,
-  // 🔥 WAJIB: Terima Props Role & Unit dari App.js
   userRole,
   userUnit,
 }) => {
+  // State Filter & Search
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedYear, setSelectedYear] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
+  const [sortTdcg, setSortTdcg] = useState("default");
+
+  // State Item & Action
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [sortTdcg, setSortTdcg] = useState("default");
 
   // State Batch
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  // State Edit
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState({});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [masterAssets, setMasterAssets] = useState([]);
 
-  // --- 2. FILTER LOGIC (DIPERBAIKI) ---
+  // Pagination (Dibuat State agar bisa diubah user)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10); // Default 10
+
+  // --- FETCH MASTER ASSETS ---
+  useEffect(() => {
+    const fetchAssets = async () => {
+      const { data } = await supabase.from("assets_trafo").select("*");
+      if (data) setMasterAssets(data);
+    };
+    fetchAssets();
+  }, []);
+
+  const uniqueGIs = useMemo(
+    () => [...new Set(masterAssets.map((a) => a.lokasi_gi))].sort(),
+    [masterAssets],
+  );
+
+  const availableTrafosForEdit = useMemo(() => {
+    if (!editFormData.lokasi_gi) return [];
+    return masterAssets
+      .filter((a) => a.lokasi_gi === editFormData.lokasi_gi)
+      .map((a) => a.nama_trafo)
+      .sort((a, b) => {
+        const aNum = parseInt(a.match(/\d+/)?.[0] || 0);
+        const bNum = parseInt(b.match(/\d+/)?.[0] || 0);
+        return aNum - bNum;
+      });
+  }, [editFormData.lokasi_gi, masterAssets]);
+
+  // --- EDIT LOGIC ---
+  const openEditModal = (item) => {
+    setSelectedItem(item);
+    setEditFormData({
+      id: item.id,
+      lokasi_gi: item.lokasi_gi,
+      nama_trafo: item.nama_trafo,
+      merk_trafo: item.merk_trafo,
+      serial_number: item.serial_number,
+      tahun_pembuatan: item.tahun_pembuatan,
+      level_tegangan: item.level_tegangan,
+      diambil_oleh: item.diambil_oleh,
+      tanggal_sampling: item.tanggal_sampling,
+    });
+    setIsEditing(true);
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    if (name === "lokasi_gi") {
+      setEditFormData((prev) => ({
+        ...prev,
+        lokasi_gi: value,
+        nama_trafo: "",
+      }));
+    } else if (name === "nama_trafo") {
+      const asset = masterAssets.find(
+        (a) => a.lokasi_gi === editFormData.lokasi_gi && a.nama_trafo === value,
+      );
+      setEditFormData((prev) => ({
+        ...prev,
+        nama_trafo: value,
+        merk_trafo: asset?.merk || prev.merk_trafo,
+        serial_number: asset?.serial_number || prev.serial_number,
+        tahun_pembuatan: asset?.tahun_pembuatan || prev.tahun_pembuatan,
+        level_tegangan: asset?.level_tegangan || prev.level_tegangan,
+      }));
+    } else {
+      setEditFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    setIsSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("riwayat_uji")
+        .update(editFormData)
+        .eq("id", editFormData.id);
+      if (error) throw error;
+      toast.success("Data berhasil diperbarui!");
+      fetchHistory();
+      setIsEditing(false);
+      setSelectedItem(null);
+    } catch (e) {
+      toast.error("Gagal update: " + e.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // --- FILTER LOGIC ---
   const filteredData = useMemo(() => {
     let baseData = historyData;
-
-    // A. LOGIKA SECURITY: FILTER BERDASARKAN UNIT
     const isSuperAdmin = userRole === "super_admin" || !userUnit;
 
     if (!isSuperAdmin) {
       const allowedGIs = ULTG_MAPPING[userUnit] || [];
       baseData = historyData.filter((item) => {
         const itemGI = (item.lokasi_gi || "").trim();
-        // Cek apakah GI item ini ada di daftar GI milik user
         return allowedGIs.some(
           (allowed) =>
             itemGI.toLowerCase().includes(allowed.toLowerCase()) ||
-            allowed.toLowerCase().includes(itemGI.toLowerCase())
+            allowed.toLowerCase().includes(itemGI.toLowerCase()),
         );
       });
     }
 
-    // B. LOGIKA SEARCH & FILTER (Perbaikan Syntax Error disini)
-    // Sebelumnya baris .filter((item) => { hilang, makanya error
     let result = baseData.filter((item) => {
-      // Filter Text
       const term = searchTerm.toLowerCase();
       const matchText =
         (item.nama_trafo || "").toLowerCase().includes(term) ||
         (item.lokasi_gi || "").toLowerCase().includes(term);
 
-      // Filter Tahun
       const itemYear = item.tanggal_sampling
         ? item.tanggal_sampling.split("-")[0]
         : "";
       const matchYear = selectedYear === "All" || itemYear === selectedYear;
 
-      // Filter Status
       let matchStatus = true;
       if (selectedStatus !== "All") {
         const status = (item.status_ieee || "").toLowerCase();
@@ -139,7 +245,6 @@ const HistoryPage = ({
       return matchText && matchYear && matchStatus;
     });
 
-    // Sorting
     if (sortTdcg === "highest") {
       result = result.sort((a, b) => (b.tdcg || 0) - (a.tdcg || 0));
     } else if (sortTdcg === "lowest") {
@@ -157,21 +262,20 @@ const HistoryPage = ({
     userUnit,
   ]);
 
-  // Pagination Calculation
+  // --- PAGINATION LOGIC ---
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
-  // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedYear, selectedStatus, sortTdcg]);
+  }, [searchTerm, selectedYear, selectedStatus, sortTdcg, itemsPerPage]);
 
   const availableYears = useMemo(() => {
     const years = new Set(
-      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean)
+      historyData.map((i) => i.tanggal_sampling?.split("-")[0]).filter(Boolean),
     );
     ["2023", "2024", "2025", "2026"].forEach((y) => years.add(y));
     return Array.from(years).sort().reverse();
@@ -181,7 +285,7 @@ const HistoryPage = ({
   const handleDelete = async (id) => {
     if (!window.confirm("Hapus data ini?")) return;
     try {
-      await fetch(`http://127.0.0.1:8000/history/${id}`, { method: "DELETE" });
+      await supabase.from("riwayat_uji").delete().eq("id", id);
       toast.success("Terhapus");
       fetchHistory();
     } catch {
@@ -220,26 +324,10 @@ const HistoryPage = ({
 
   const handleBatchDownload = async () => {
     if (selectedIds.length === 0) {
-      toast.warning("Pilih minimal 1 data untuk didownload.");
+      toast.warning("Pilih minimal 1 data.");
       return;
     }
-
-    if (selectedIds.length === 1) {
-      const item = historyData.find((d) => d.id === selectedIds[0]);
-      if (item) {
-        try {
-          await generatePDFFromTemplate(item);
-          toast.success("PDF berhasil diunduh.");
-        } catch (error) {
-          toast.error("Gagal mengunduh PDF.");
-        }
-      }
-      setSelectedIds([]);
-      setSelectionMode(false);
-      return;
-    }
-
-    toast.info(`Membuat ZIP untuk ${selectedIds.length} file PDF...`);
+    toast.info(`Memproses ${selectedIds.length} data...`);
     const zip = new JSZip();
     let successCount = 0;
 
@@ -252,7 +340,7 @@ const HistoryPage = ({
         const pdfBlob = await Promise.race([
           generatePDFBlob(item),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("timeout")), 10000)
+            setTimeout(() => reject(new Error("timeout")), 10000),
           ),
         ]);
 
@@ -260,12 +348,11 @@ const HistoryPage = ({
           const filename =
             `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}_${id}.pdf`.replace(
               /[^a-z0-9_.-]/gi,
-              "_"
+              "_",
             );
           zip.file(filename, pdfBlob);
           successCount++;
         }
-
         if (i < selectedIds.length - 1)
           await new Promise((resolve) => setTimeout(resolve, 50));
       } catch (error) {
@@ -280,7 +367,6 @@ const HistoryPage = ({
     } catch (error) {
       toast.error("Gagal membuat ZIP.");
     }
-
     setSelectedIds([]);
     setSelectionMode(false);
   };
@@ -296,10 +382,7 @@ const HistoryPage = ({
     let count = 0;
     for (const id of selectedIds) {
       try {
-        await fetch(`http://127.0.0.1:8000/history/${id}`, {
-          method: "DELETE",
-          keepalive: true,
-        });
+        await supabase.from("riwayat_uji").delete().eq("id", id);
         count++;
       } catch (e) {
         console.error(e);
@@ -323,20 +406,15 @@ const HistoryPage = ({
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
       {/* HEADER & FILTER */}
       <div className="space-y-4">
-        {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <h2
-              className={`text-2xl font-bold ${
-                isDarkMode ? "text-white" : "text-[#1B7A8F]"
-              }`}
+              className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-[#1B7A8F]"}`}
             >
               Arsip Data Pengujian {userUnit ? `(${userUnit})` : ""}
             </h2>
             <p
-              className={`text-sm mt-1 ${
-                isDarkMode ? "text-slate-400" : "text-slate-500"
-              }`}
+              className={`text-sm mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}
             >
               Total: {filteredData.length} / {historyData.length} Data
             </p>
@@ -345,13 +423,8 @@ const HistoryPage = ({
 
         {/* FILTER SECTION */}
         <div
-          className={`p-4 rounded-xl border ${
-            isDarkMode
-              ? "bg-slate-800/50 border-slate-700"
-              : "bg-gray-50 border-gray-200"
-          }`}
+          className={`p-4 rounded-xl border ${isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-gray-50 border-gray-200"}`}
         >
-          {/* Filter Row 1 */}
           <div className="flex flex-col md:flex-row gap-3 mb-4">
             {/* Filter Tahun */}
             <div className="relative flex-1 md:flex-none md:w-40">
@@ -362,11 +435,7 @@ const HistoryPage = ({
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
-                  isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white"
-                    : "bg-white border-gray-300"
-                }`}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "bg-white border-gray-300"}`}
               >
                 <option value="All">Semua Tahun</option>
                 {availableYears.map((y) => (
@@ -377,7 +446,7 @@ const HistoryPage = ({
               </select>
             </div>
 
-            {/* Filter TDCG */}
+            {/* Filter Sort TDCG */}
             <div className="relative flex-1 md:flex-none md:w-40">
               <ArrowUpDown
                 size={16}
@@ -386,11 +455,7 @@ const HistoryPage = ({
               <select
                 value={sortTdcg}
                 onChange={(e) => setSortTdcg(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
-                  isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white"
-                    : "bg-white border-gray-300"
-                }`}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "bg-white border-gray-300"}`}
               >
                 <option value="default">Urutkan TDCG</option>
                 <option value="highest">TDCG Tertinggi</option>
@@ -407,11 +472,7 @@ const HistoryPage = ({
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${
-                  isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white"
-                    : "bg-white border-gray-300"
-                }`}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm font-medium outline-none cursor-pointer ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "bg-white border-gray-300"}`}
               >
                 <option value="All">Semua Status</option>
                 <option value="1">Normal</option>
@@ -431,16 +492,12 @@ const HistoryPage = ({
                 placeholder="Cari GI atau Trafo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none ${
-                  isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white"
-                    : "bg-white border-gray-300"
-                }`}
+                className={`w-full pl-10 pr-4 py-2.5 rounded-lg border text-sm outline-none ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "bg-white border-gray-300"}`}
               />
             </div>
           </div>
 
-          {/* Filter Row 2: Buttons */}
+          {/* ACTION BUTTONS */}
           <div className="flex flex-col sm:flex-row gap-3">
             {!selectionMode ? (
               <>
@@ -450,7 +507,6 @@ const HistoryPage = ({
                 >
                   <CheckSquare size={16} /> <span>Seleksi Batch</span>
                 </button>
-                {/* Tombol Hapus Semua hanya muncul jika Super Admin */}
                 {userRole === "super_admin" && (
                   <button
                     onClick={handleClearAll}
@@ -501,11 +557,7 @@ const HistoryPage = ({
 
       {/* TABLE */}
       <div
-        className={`rounded-xl shadow-sm border overflow-hidden ${
-          isDarkMode
-            ? "bg-[#1e293b] border-slate-700"
-            : "bg-white border-gray-200"
-        }`}
+        className={`rounded-xl shadow-sm border overflow-hidden ${isDarkMode ? "bg-[#1e293b] border-slate-700" : "bg-white border-gray-200"}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -548,23 +600,14 @@ const HistoryPage = ({
               ) : filteredData.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-gray-500">
-                    Data tidak ditemukan untuk unit ini.
+                    Data tidak ditemukan.
                   </td>
                 </tr>
               ) : (
                 paginatedData.map((item) => (
                   <tr
                     key={item.id}
-                    onClick={() => selectionMode && toggleSelectItem(item.id)}
-                    className={`${
-                      isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"
-                    } ${
-                      selectionMode && selectedIds.includes(item.id)
-                        ? isDarkMode
-                          ? "bg-blue-900/20"
-                          : "bg-blue-50"
-                        : ""
-                    } ${selectionMode ? "cursor-pointer" : ""}`}
+                    className={`${isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"} ${selectionMode && selectedIds.includes(item.id) ? (isDarkMode ? "bg-blue-900/20" : "bg-blue-50") : ""}`}
                   >
                     {selectionMode && (
                       <td className={`text-center ${tdClass}`}>
@@ -591,9 +634,7 @@ const HistoryPage = ({
                     </td>
                     <td className={tdClass}>
                       <div
-                        className={`font-medium text-sm ${
-                          isDarkMode ? "text-white" : "text-gray-800"
-                        }`}
+                        className={`font-medium text-sm ${isDarkMode ? "text-white" : "text-gray-800"}`}
                       >
                         {item.nama_trafo}
                       </div>
@@ -602,61 +643,25 @@ const HistoryPage = ({
                       </div>
                     </td>
                     <td className={tdClass}>
-                      {(() => {
-                        let bg = "";
-                        let icon = null;
-                        const status = (item.status_ieee || "").toLowerCase();
-                        if (
-                          status.includes("kondisi 1") ||
-                          status.includes("normal")
-                        ) {
-                          bg = "bg-green-100 text-green-700";
-                          icon = <CheckCircle size={10} />;
-                        } else if (
-                          status.includes("kondisi 2") ||
-                          status.includes("waspada")
-                        ) {
-                          bg = "bg-orange-100 text-orange-700";
-                          icon = <AlertTriangle size={10} />;
-                        } else {
-                          bg = "bg-red-100 text-red-700";
-                          icon = <AlertTriangle size={10} />;
-                        }
-                        return (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${bg}`}
-                          >
-                            {icon} {item.status_ieee}
-                          </span>
-                        );
-                      })()}
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${item.status_ieee.includes("Normal") ? "bg-green-100 text-green-700" : item.status_ieee.includes("Waspada") ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700"}`}
+                      >
+                        {item.status_ieee}
+                      </span>
                     </td>
                     <td className={`text-center font-bold ${tdClass}`}>
-                      {(() => {
-                        const status = (item.status_ieee || "").toLowerCase();
-                        let tdcgClass = "text-[#1B7A8F]";
-                        if (
-                          status.includes("kondisi 3") ||
-                          status.includes("bahaya")
-                        )
-                          tdcgClass =
-                            "bg-red-100 text-red-500 rounded-lg px-2 py-1";
-                        else if (status.includes("kondisi 2"))
-                          tdcgClass =
-                            "bg-orange-100 text-orange-500 rounded-lg px-2 py-1";
-                        else if (status.includes("kondisi 1"))
-                          tdcgClass =
-                            "bg-green-100 text-green-600 rounded-lg px-2 py-1";
-                        return (
-                          <span className={tdcgClass}>
-                            {Math.round(item.tdcg)}
-                          </span>
-                        );
-                      })()}
+                      {Math.round(item.tdcg)}
                     </td>
                     {!selectionMode && (
                       <td className={`text-center ${tdClass}`}>
                         <div className="flex justify-center gap-2">
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-2 text-orange-500 bg-orange-50 rounded hover:bg-orange-100"
+                            title="Edit Identitas"
+                          >
+                            <Edit2 size={16} />
+                          </button>
                           <button
                             onClick={() => setSelectedItem(item)}
                             className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100"
@@ -687,189 +692,342 @@ const HistoryPage = ({
             </tbody>
           </table>
         </div>
-
-        {/* PAGINATION CONTROLS */}
-        {filteredData.length > 0 && (
-          <div
-            className={`p-4 border-t flex items-center justify-between ${
-              isDarkMode ? "border-slate-700" : "border-gray-200"
-            }`}
-          >
-            <span
-              className={`text-xs ${
-                isDarkMode ? "text-slate-400" : "text-gray-500"
-              }`}
-            >
-              Halaman <strong>{currentPage}</strong> dari{" "}
-              <strong>{totalPages}</strong> (Total {filteredData.length} data)
-            </span>
-            <div className="flex gap-2">
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-                className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-                className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${
-                  isDarkMode ? "text-white" : "text-gray-800"
-                }`}
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* MODAL DETAIL */}
+      {/* PAGINATION (DENGAN SELECTOR JUMLAH BARIS) */}
+      {filteredData.length > 0 && (
+        <div
+          className={`p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${isDarkMode ? "border-slate-700" : "border-gray-200"}`}
+        >
+          {/* SELECTOR BARIS PER HALAMAN */}
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
+            >
+              Baris per halaman:
+            </span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+              className={`text-xs p-1 rounded border outline-none ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "bg-white border-gray-300 text-gray-700"}`}
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+
+          <span
+            className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
+          >
+            Halaman <strong>{currentPage}</strong> dari{" "}
+            <strong>{totalPages}</strong>
+          </span>
+
+          <div className="flex gap-2">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+              className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${isDarkMode ? "text-white" : "text-gray-800"}`}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${isDarkMode ? "text-white" : "text-gray-800"}`}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DETAIL / EDIT --- */}
       {selectedItem && (
         <div className="fixed top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
           <div
-            className={`w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${
-              isDarkMode ? "bg-slate-800" : "bg-white"
-            }`}
+            className={`w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
           >
             {/* Header Modal */}
             <div
-              className={`flex justify-between items-center p-6 border-b ${
-                isDarkMode ? "border-slate-700" : "border-gray-100"
-              }`}
+              className={`flex justify-between items-center p-6 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"}`}
             >
               <div>
                 <h3
-                  className={`text-xl font-bold flex gap-2 ${
-                    isDarkMode ? "text-white" : "text-gray-800"
-                  }`}
+                  className={`text-xl font-bold flex items-center gap-2 ${isDarkMode ? "text-white" : "text-gray-800"}`}
                 >
-                  <Zap className="text-yellow-500" /> Detail Pengujian
+                  {isEditing ? (
+                    <>
+                      <Edit2 className="text-orange-500" /> Edit Identitas Aset
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="text-yellow-500" /> Detail Pengujian
+                    </>
+                  )}
                 </h3>
                 <p className="text-sm opacity-60">
                   {selectedItem.nama_trafo} - {selectedItem.lokasi_gi}
                 </p>
               </div>
               <button
-                onClick={() => setSelectedItem(null)}
+                onClick={() => {
+                  setSelectedItem(null);
+                  setIsEditing(false);
+                }}
                 className="p-2 hover:bg-gray-500/20 rounded-full"
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Body Modal Scrollable */}
+            {/* Body Modal */}
             <div className="flex-1 overflow-y-auto p-6">
-              {/* Stats Cards */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div
-                  className={`p-4 rounded-xl border ${
-                    isDarkMode
-                      ? "bg-slate-700 border-slate-600"
-                      : "bg-blue-50 border-blue-200"
-                  }`}
-                >
-                  <p className="text-xs font-bold opacity-60 uppercase">
-                    Total Gas (TDCG)
-                  </p>
-                  <p className="text-3xl font-black">
-                    {selectedItem.tdcg || 0}{" "}
-                    <span className="text-sm font-normal">ppm</span>
-                  </p>
-                </div>
-                <div
-                  className={`p-4 rounded-xl border ${
-                    isDarkMode
-                      ? "bg-slate-700 border-slate-600"
-                      : "bg-blue-50 border-blue-200"
-                  }`}
-                >
-                  <p className="text-xs font-bold opacity-60 uppercase">
-                    Status IEEE
-                  </p>
-                  <p
-                    className={`text-xl font-bold ${
-                      selectedItem.status_ieee?.includes("Normal")
-                        ? "text-green-500"
-                        : "text-red-500"
-                    }`}
-                  >
-                    {selectedItem.status_ieee}
-                  </p>
-                </div>
-              </div>
-
-              {/* Content Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Gas List */}
-                <div className="grid grid-cols-2 gap-3 h-fit">
-                  {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
-                    (gas) => (
-                      <div
-                        key={gas}
-                        className={`p-3 rounded border text-center ${
-                          isDarkMode
-                            ? "border-slate-600 bg-slate-700"
-                            : "border-gray-200"
-                        }`}
+              {isEditing ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Lokasi GI
+                      </label>
+                      <select
+                        name="lokasi_gi"
+                        value={editFormData.lokasi_gi}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600 text-white" : "bg-gray-50 border-gray-200"}`}
                       >
-                        <p className="text-xs uppercase opacity-60 font-bold">
-                          {gas}
-                        </p>
-                        <p className="text-lg font-mono font-bold">
-                          {selectedItem[gas]}
-                        </p>
-                      </div>
-                    )
-                  )}
-                </div>
-                {/* Duval Pentagon */}
-                <div
-                  className={`p-4 rounded-xl border flex flex-col items-center justify-center ${
-                    isDarkMode
-                      ? "bg-slate-700/50 border-slate-600"
-                      : "bg-gray-50"
-                  }`}
-                >
-                  <p className="text-xs font-bold mb-4 uppercase tracking-widest opacity-60">
-                    Duval Pentagon
-                  </p>
-                  <div className="transform scale-100">
-                    <DuvalPentagon
-                      h2={selectedItem.h2}
-                      ch4={selectedItem.ch4}
-                      c2h6={selectedItem.c2h6}
-                      c2h4={selectedItem.c2h4}
-                      c2h2={selectedItem.c2h2}
+                        <option value="">-- Pilih GI --</option>
+                        {uniqueGIs.map((gi, i) => (
+                          <option key={i} value={gi}>
+                            {gi}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Nama Trafo
+                      </label>
+                      <select
+                        name="nama_trafo"
+                        value={editFormData.nama_trafo}
+                        onChange={handleEditChange}
+                        disabled={!editFormData.lokasi_gi}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600 text-white" : "bg-gray-50 border-gray-200"}`}
+                      >
+                        <option value="">-- Pilih Trafo --</option>
+                        {availableTrafosForEdit.map((t, i) => (
+                          <option key={i} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Merk
+                      </label>
+                      <input
+                        name="merk_trafo"
+                        value={editFormData.merk_trafo}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        S/N
+                      </label>
+                      <input
+                        name="serial_number"
+                        value={editFormData.serial_number}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Tahun Pembuatan
+                      </label>
+                      <input
+                        type="number"
+                        name="tahun_pembuatan"
+                        value={editFormData.tahun_pembuatan}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Level Tegangan
+                      </label>
+                      <input
+                        name="level_tegangan"
+                        value={editFormData.level_tegangan}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Petugas Sampling
+                      </label>
+                      <input
+                        name="diambil_oleh"
+                        value={editFormData.diambil_oleh}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase text-gray-500">
+                        Tanggal Sampling
+                      </label>
+                      <input
+                        type="date"
+                        name="tanggal_sampling"
+                        value={editFormData.tanggal_sampling}
+                        onChange={handleEditChange}
+                        className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-gray-50 border-gray-200"}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg flex items-start gap-3">
+                    <AlertTriangle
+                      className="text-yellow-600 shrink-0"
+                      size={20}
                     />
+                    <div>
+                      <p className="text-sm font-bold text-yellow-700 dark:text-yellow-500">
+                        Perhatian
+                      </p>
+                      <p className="text-xs text-yellow-600/80">
+                        Data hasil pengujian gas (H2, CH4, dll) dan diagnosa AI{" "}
+                        <strong>tidak dapat diubah</strong> untuk menjaga
+                        integritas data historis. Jika ada kesalahan input gas,
+                        silakan hapus data ini dan input ulang.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div
+                      className={`p-4 rounded-xl border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-blue-50 border-blue-200"}`}
+                    >
+                      <p className="text-xs font-bold opacity-60 uppercase">
+                        Total Gas (TDCG)
+                      </p>
+                      <p className="text-3xl font-black">
+                        {selectedItem.tdcg || 0}{" "}
+                        <span className="text-sm font-normal">ppm</span>
+                      </p>
+                    </div>
+                    <div
+                      className={`p-4 rounded-xl border ${isDarkMode ? "bg-slate-700 border-slate-600" : "bg-blue-50 border-blue-200"}`}
+                    >
+                      <p className="text-xs font-bold opacity-60 uppercase">
+                        Status IEEE
+                      </p>
+                      <p
+                        className={`text-xl font-bold ${selectedItem.status_ieee?.includes("Normal") ? "text-green-500" : "text-red-500"}`}
+                      >
+                        {selectedItem.status_ieee}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-3 h-fit">
+                      {["h2", "ch4", "c2h2", "c2h4", "c2h6", "co", "co2"].map(
+                        (gas) => (
+                          <div
+                            key={gas}
+                            className={`p-3 rounded border text-center ${isDarkMode ? "border-slate-600 bg-slate-700" : "border-gray-200"}`}
+                          >
+                            <p className="text-xs uppercase opacity-60 font-bold">
+                              {gas}
+                            </p>
+                            <p className="text-lg font-mono font-bold">
+                              {selectedItem[gas]}
+                            </p>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                    <div
+                      className={`p-4 rounded-xl border flex flex-col items-center justify-center ${isDarkMode ? "bg-slate-700/50 border-slate-600" : "bg-gray-50"}`}
+                    >
+                      <p className="text-xs font-bold mb-4 uppercase tracking-widest opacity-60">
+                        Duval Pentagon
+                      </p>
+                      <div className="transform scale-100">
+                        <DuvalPentagon
+                          h2={selectedItem.h2}
+                          ch4={selectedItem.ch4}
+                          c2h6={selectedItem.c2h6}
+                          c2h4={selectedItem.c2h4}
+                          c2h2={selectedItem.c2h2}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Footer Modal */}
             <div
-              className={`p-4 border-t flex justify-end gap-3 ${
-                isDarkMode
-                  ? "border-slate-700 bg-slate-900"
-                  : "border-gray-100 bg-gray-50"
-              }`}
+              className={`p-4 border-t flex justify-end gap-3 ${isDarkMode ? "border-slate-700 bg-slate-900" : "border-gray-100 bg-gray-50"}`}
             >
-              <button
-                onClick={() => generatePDFFromTemplate(selectedItem)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex gap-2 items-center"
-              >
-                <Download size={16} /> PDF
-              </button>
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="px-4 py-2 border rounded-lg font-bold text-sm hover:bg-gray-500/10"
-              >
-                Tutup
-              </button>
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="px-4 py-2 border rounded-lg font-bold text-sm hover:bg-gray-500/10"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isSavingEdit}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm flex gap-2 items-center"
+                  >
+                    {isSavingEdit ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : (
+                      <Save size={16} />
+                    )}{" "}
+                    Simpan Perubahan
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => openEditModal(selectedItem)}
+                    className="px-4 py-2 border border-orange-200 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg font-bold text-sm flex gap-2 items-center"
+                  >
+                    <Edit2 size={16} /> Edit Identitas
+                  </button>
+                  <button
+                    onClick={() => generatePDFFromTemplate(selectedItem)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex gap-2 items-center"
+                  >
+                    <Download size={16} /> PDF
+                  </button>
+                  <button
+                    onClick={() => setSelectedItem(null)}
+                    className="px-4 py-2 border rounded-lg font-bold text-sm hover:bg-gray-500/10"
+                  >
+                    Tutup
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

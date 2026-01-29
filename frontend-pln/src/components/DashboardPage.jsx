@@ -1,7 +1,10 @@
+"use client";
+
 import React, { useMemo, useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+// 🔥 IMPOR DATA ASET LENGKAP
 import { allGIs } from "../data/assetData";
 import {
   Map as MapIcon,
@@ -14,7 +17,6 @@ import {
   PieChart as PieIcon,
   Activity,
   AlertTriangle,
-  ArrowLeft,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -80,18 +82,15 @@ const formatDate = (dateString) => {
       });
 };
 
-const DashboardPage = ({ isDarkMode, liveData = [] }) => {
+const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
   const safeLiveData = Array.isArray(liveData) ? liveData : [];
   const [selectedTrafo, setSelectedTrafo] = useState(null);
-
-  // State untuk GI yang diklik
-  const [selectedGI, setSelectedGI] = useState(null);
 
   const [activeSeries, setActiveSeries] = useState(
     GAS_CONFIG.reduce((acc, gas) => {
       acc[gas.key] = true;
       return acc;
-    }, {})
+    }, {}),
   );
 
   const toggleSeries = (key) =>
@@ -104,31 +103,28 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
     };
   }, [selectedTrafo]);
 
-  // --- FUNGSI NORMALISASI NAMA (PENTING!) ---
-  // Kita hanya merapikan spasi dan uppercase.
-  // JANGAN HAPUS "GI" ATAU "GIS" AGAR TETAP BEDA.
+  // --- FUNGSI NORMALISASI NAMA ---
   const normalizeName = (name) => {
     if (!name) return "";
     return name.toString().toUpperCase().trim().replace(/\s+/g, " ");
-    // Contoh: "  GI   Likupang  New " -> "GI LIKUPANG NEW"
   };
 
   // --- LOGIC 1: GLOBAL STATS & RANKING ---
   const topTrafos = useMemo(() => {
     if (safeLiveData.length === 0) return [];
     const map = new Map();
+
     safeLiveData.forEach((item) => {
-      // Key unik berdasarkan GI + Nama Trafo
       const key = `${normalizeName(item.lokasi_gi)}-${normalizeName(
-        item.nama_trafo
+        item.nama_trafo,
       )}`;
       const currentTdcg = parseFloat(item.tdcg) || 0;
 
-      // Ambil data terbaru atau yang TDCG lebih tinggi
       if (!map.has(key) || currentTdcg > (parseFloat(map.get(key).tdcg) || 0)) {
         map.set(key, item);
       }
     });
+
     return Array.from(map.values())
       .map((item) => ({
         gi: item.lokasi_gi,
@@ -148,15 +144,18 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
       kritis = 0,
       totalGas = 0,
       count = 0;
+
     const uniqueTrafos = new Map();
+
     safeLiveData.forEach((d) => {
       const key = `${normalizeName(d.lokasi_gi)}-${normalizeName(
-        d.nama_trafo
+        d.nama_trafo,
       )}`;
       if (!uniqueTrafos.has(key) || d.id > uniqueTrafos.get(key).id) {
         uniqueTrafos.set(key, d);
       }
     });
+
     uniqueTrafos.forEach((d) => {
       const s = (d.status_ieee || "").toUpperCase();
       const gas = parseFloat(d.tdcg) || 0;
@@ -166,6 +165,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
       else if (s.includes("WASPADA") || s.includes("COND 2")) waspada++;
       else normal++;
     });
+
     return {
       pieData: [
         { name: "Normal", value: normal },
@@ -184,7 +184,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
       .filter(
         (d) =>
           normalizeName(d.lokasi_gi) === normalizeName(selectedTrafo.gi) &&
-          normalizeName(d.nama_trafo) === normalizeName(selectedTrafo.unit)
+          normalizeName(d.nama_trafo) === normalizeName(selectedTrafo.unit),
       )
       .map((d) => ({
         ...d,
@@ -208,14 +208,10 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
 
     const targetGI = normalizeName(giName);
 
-    // 🔥 FIX: PENGGUNAAN EXACT MATCH (===)
-    // "GI LIKUPANG" !== "GI LIKUPANG NEW"
-    // "GI TELING" !== "GIS TELING"
     const records = safeLiveData.filter(
-      (d) => normalizeName(d.lokasi_gi) === targetGI
+      (d) => normalizeName(d.lokasi_gi) === targetGI,
     );
 
-    // Ambil unique per trafo (data terbaru)
     const uniqueMap = new Map();
     records.forEach((rec) => {
       const unitName = normalizeName(rec.nama_trafo);
@@ -225,12 +221,12 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
     });
 
     return Array.from(uniqueMap.values()).sort(
-      (a, b) => (parseFloat(b.tdcg) || 0) - (parseFloat(a.tdcg) || 0)
+      (a, b) => (parseFloat(b.tdcg) || 0) - (parseFloat(a.tdcg) || 0),
     );
   };
 
   const getPinStatus = (trafoList) => {
-    if (trafoList.length === 0) return "Normal"; // Default jika kosong
+    if (trafoList.length === 0) return "Normal";
     for (const t of trafoList) {
       const s = (t.status_ieee || "").toUpperCase();
       if (s.includes("KRITIS") || s.includes("COND 3")) return "KRITIS";
@@ -244,27 +240,29 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
   const cardBg = isDarkMode
     ? "bg-[#1e293b] border-slate-700"
     : "bg-white border-slate-200";
-  // --- MAP BOUNDS: HITUNG DARI `allGIs` UNTUK MEMBATASI VIEW ---
-  // Adjust `BOUNDS_PADDING_FACTOR` di sini untuk melonggarkan/mengetatkan padding
-  const BOUNDS_PADDING_FACTOR = 0.25; // default 0.10 sebelumnya, tingkatkan untuk lebih longgar
 
-  const mapBounds = React.useMemo(() => {
+  // --- MAP BOUNDS ---
+  const BOUNDS_PADDING_FACTOR = 0.25;
+
+  const mapBounds = useMemo(() => {
     if (!Array.isArray(allGIs) || allGIs.length === 0) return null;
+
     const lats = allGIs
       .map((g) => Number(g.lat))
       .filter((n) => Number.isFinite(n));
     const lngs = allGIs
       .map((g) => Number(g.lng))
       .filter((n) => Number.isFinite(n));
+
     if (lats.length === 0 || lngs.length === 0) return null;
+
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
 
-    // Tambah padding supaya marker tidak tepat di tepi
-    const latPad = (maxLat - minLat) * BOUNDS_PADDING_FACTOR || 5;
-    const lngPad = (maxLng - minLng) * BOUNDS_PADDING_FACTOR || 5;
+    const latPad = (maxLat - minLat) * BOUNDS_PADDING_FACTOR || 0.5;
+    const lngPad = (maxLng - minLng) * BOUNDS_PADDING_FACTOR || 0.5;
 
     return [
       [minLat - latPad, minLng - lngPad],
@@ -275,7 +273,6 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
   return (
     <div className="space-y-6 pb-20">
       <style>{`
-        /* FIX POPUP MAP STYLE */
         .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
         .leaflet-popup-content { margin: 0; width: 320px !important; }
         .custom-popup-scroll::-webkit-scrollbar { width: 4px; }
@@ -286,7 +283,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
       {/* HEADER STATS */}
       <div>
         <h2 className={`text-2xl font-bold mb-4 ${textMain}`}>
-          Executive Dashboard
+          Executive Dashboard {userUnit ? `- ${userUnit} View` : ""}
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div
@@ -297,7 +294,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Total GI
+                Total GI (Global)
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
                 {allGIs.length}
@@ -312,7 +309,7 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Total Aset
+                Total Aset (Uji)
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
                 {globalStats.totalAssets}
@@ -386,17 +383,15 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                   position={[gi.lat, gi.lng]}
                   icon={createCustomIcon(status)}
                 >
-                  {/* POPUP: Menampilkan List Trafo di GI Tersebut */}
                   <Popup>
                     <div className="font-sans text-gray-800">
-                      {/* Header Popup */}
                       <div
                         className={`p-3 text-white flex justify-between items-center ${
                           status.includes("KRITIS")
                             ? "bg-red-600"
                             : status.includes("WASPADA")
-                            ? "bg-orange-500"
-                            : "bg-blue-600"
+                              ? "bg-orange-500"
+                              : "bg-blue-600"
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -410,7 +405,6 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                         </span>
                       </div>
 
-                      {/* Body Popup: Scrollable List */}
                       <div className="bg-white max-h-[250px] overflow-y-auto custom-popup-scroll">
                         {trafoList.length > 0 ? (
                           trafoList.map((item, i) => (
@@ -441,10 +435,10 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                                     (item.status_ieee || "").includes("KRITIS")
                                       ? "bg-red-500 text-white"
                                       : (item.status_ieee || "").includes(
-                                          "WASPADA"
-                                        )
-                                      ? "bg-orange-500 text-white"
-                                      : "bg-green-500 text-white"
+                                            "WASPADA",
+                                          )
+                                        ? "bg-orange-500 text-white"
+                                        : "bg-green-500 text-white"
                                   }`}
                                 >
                                   {(item.status_ieee || "Normal").split(" ")[0]}
@@ -454,17 +448,10 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                           ))
                         ) : (
                           <div className="p-4 text-center text-gray-400 text-xs">
-                            Belum ada data unit.
+                            Belum ada data uji untuk GI ini.
                           </div>
                         )}
                       </div>
-
-                      {/* Footer Popup */}
-                      {trafoList.length > 0 && (
-                        <div className="p-2 bg-gray-50 text-[10px] text-center text-gray-500 border-t">
-                          Klik unit untuk lihat grafik
-                        </div>
-                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -473,9 +460,8 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
           </MapContainer>
         </div>
 
-        {/* KOLOM KANAN: SIDE PANEL (KEMBALI KE DEFAULT) */}
+        {/* KOLOM KANAN: SIDE PANEL */}
         <div className="flex flex-col gap-6 h-[650px]">
-          {/* PIE CHART */}
           <div
             className={`flex-1 rounded-2xl border shadow-sm p-5 relative flex flex-col items-center justify-center ${cardBg}`}
           >
@@ -521,21 +507,19 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
             </div>
           </div>
 
-          {/* RANKING */}
-          <div
-            className={`flex-[1.5] rounded-2xl border shadow-sm p-0 flex flex-col overflow-hidden ${cardBg}`}
-          >
-            <div className="p-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
-              <h3
-                className={`font-bold text-sm flex items-center gap-2 ${textMain}`}
-              >
-                <Trophy className="text-yellow-500" size={16} /> Top Highest
-                TDCG
+          {/* 🔥 MODIFIED SECTION: TOP HIGHEST TDCG (FORCE LIGHT MODE & RED BAR) */}
+          <div className="flex-[1.5] rounded-2xl border border-slate-200 shadow-sm p-0 flex flex-col overflow-hidden bg-white">
+            {/* Header: Biru PLN */}
+            <div className="p-4 border-b border-gray-100 bg-[#1B7A8F] text-white shadow-sm">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />
+                Top 5 Highest TDCG
               </h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-0">
               {topTrafos.length === 0 ? (
-                <div className="text-center p-4 opacity-50 text-xs">
+                <div className="text-center p-8 opacity-50 text-xs flex flex-col items-center gap-2 text-gray-500">
+                  <Server size={32} className="opacity-20" />
                   Data Kosong
                 </div>
               ) : (
@@ -545,26 +529,55 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                     onClick={() =>
                       setSelectedTrafo({ gi: item.gi, unit: item.unit })
                     }
-                    className="group p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-xl cursor-pointer border-b border-dashed border-gray-100 dark:border-gray-700 last:border-0 transition"
+                    className="group p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 transition-all duration-200"
                   >
-                    <div className="flex justify-between items-end mb-1">
-                      <div>
-                        <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-500 font-bold">
-                          {item.gi}
-                        </span>
-                        <p className={`font-bold text-sm mt-1 ${textMain}`}>
-                          {item.unit}
-                        </p>
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-3">
+                        {/* Rank Badge: Emas untuk #1, Abu-abu untuk lainnya */}
+                        <div
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${
+                            idx === 0
+                              ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30"
+                              : "bg-gray-100 text-gray-500"
+                          }`}
+                        >
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] bg-[#1B7A8F]/10 text-[#1B7A8F] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                              {item.gi}
+                            </span>
+                          </div>
+                          <p className="font-bold text-sm mt-0.5 text-gray-900 group-hover:text-[#1B7A8F] transition-colors">
+                            {item.unit}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-red-500 font-black text-lg flex items-center gap-1">
-                        <Flame size={14} /> {item.tdcg.toFixed(0)}
-                      </p>
+
+                      <div className="text-right">
+                        <p className="text-[#1B7A8F] font-black text-lg flex items-center justify-end gap-1">
+                          <Flame
+                            size={16}
+                            className={
+                              idx === 0
+                                ? "text-red-500 animate-pulse"
+                                : "text-gray-300"
+                            }
+                            fill={idx === 0 ? "#ef4444" : "none"}
+                          />
+                          {item.tdcg.toFixed(0)}
+                        </p>
+                        <p className="text-[10px] text-gray-400">ppm</p>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+
+                    {/* Progress Bar: SOLID RED (NO GRADIENT) */}
+                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden relative">
                       <div
-                        className="h-full bg-red-500"
+                        className="h-full rounded-full transition-all duration-1000 ease-out bg-red-500"
                         style={{
-                          width: `${Math.min((item.tdcg / 1000) * 100, 100)}%`,
+                          width: `${Math.min((item.tdcg / 2000) * 100, 100)}%`, // Skala disesuaikan
                         }}
                       ></div>
                     </div>
@@ -662,8 +675,9 @@ const DashboardPage = ({ isDarkMode, liveData = [] }) => {
                             stroke={gas.color}
                             strokeWidth={2}
                             dot={false}
+                            strokeDasharray={gas.dash}
                           />
-                        ))
+                        )),
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
