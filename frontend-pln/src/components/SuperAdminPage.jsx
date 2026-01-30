@@ -16,6 +16,8 @@ import {
   AlertCircle,
   Database,
   UploadCloud,
+  Edit2,
+  X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { supabase } from "../lib/supabaseClient"; // 🔥 IMPORT SUPABASE CLIENT
@@ -61,6 +63,16 @@ const SuperAdminPage = ({ session }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loadingDelete, setLoadingDelete] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  // 🔥 STATE UNTUK DELETE MODAL
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // 🔥 STATE UNTUK EDIT MODAL
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
 
   const [formData, setFormData] = useState({
     ultg: "",
@@ -166,16 +178,21 @@ const SuperAdminPage = ({ session }) => {
     }
   };
 
-  // 🔥 3. DELETE ASET (LANGSUNG SUPABASE)
-  const handleDelete = async (id, nama) => {
-    if (!window.confirm(`Hapus permanen aset "${nama}"?`)) return;
+  // 🔥 3. DELETE ASET - OPEN MODAL
+  const openDeleteModal = (asset) => {
+    setAssetToDelete(asset);
+    setShowDeleteModal(true);
+  };
 
-    setLoadingDelete(id);
+  const confirmDelete = async () => {
+    if (!assetToDelete) return;
+
+    setLoadingDelete(assetToDelete.id);
     try {
       const { error } = await supabase
         .from("assets_trafo")
         .delete()
-        .eq("id", id);
+        .eq("id", assetToDelete.id);
       if (error) throw error;
 
       toast.success("Aset berhasil dihapus.");
@@ -184,6 +201,60 @@ const SuperAdminPage = ({ session }) => {
       toast.error("Gagal menghapus aset.");
     } finally {
       setLoadingDelete(null);
+      setShowDeleteModal(false);
+      setAssetToDelete(null);
+      setDeleteConfirmText("");
+    }
+  };
+
+  // 🔥 OPEN EDIT MODAL
+  const openEditModal = (asset) => {
+    setEditFormData({
+      id: asset.id,
+      lokasi_gi: asset.lokasi_gi || "",
+      nama_trafo: asset.nama_trafo || "",
+      merk: asset.merk || "",
+      serial_number: asset.serial_number || "",
+      tahun_pembuatan: asset.tahun_pembuatan || "",
+      level_tegangan: asset.level_tegangan || "",
+      unit_ultg: asset.unit_ultg || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const confirmEdit = async () => {
+    if (!editFormData) return;
+
+    setLoadingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("assets_trafo")
+        .update({
+          lokasi_gi: editFormData.lokasi_gi,
+          nama_trafo: editFormData.nama_trafo,
+          merk: editFormData.merk,
+          serial_number: editFormData.serial_number,
+          tahun_pembuatan: editFormData.tahun_pembuatan,
+          level_tegangan: editFormData.level_tegangan,
+        })
+        .eq("id", editFormData.id);
+
+      if (error) throw error;
+
+      toast.success("Aset berhasil diperbarui.");
+      fetchAssets();
+      setShowEditModal(false);
+      setEditFormData(null);
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal memperbarui aset.");
+    } finally {
+      setLoadingEdit(false);
     }
   };
 
@@ -201,9 +272,12 @@ const SuperAdminPage = ({ session }) => {
         ? ultgData[formData.ultg]?.name.replace("ULTG ", "")
         : "Unknown";
 
+      // 🔥 Hapus field 'ultg' karena tidak ada di tabel database
+      const { ultg, ...dataToInsert } = formData;
+
       const { error } = await supabase.from("assets_trafo").insert([
         {
-          ...formData,
+          ...dataToInsert,
           unit_ultg: unitName, // Pastikan kolom ini terisi
           serial_number: formData.serial_number || "-",
           tahun_pembuatan: formData.tahun_pembuatan || "-",
@@ -321,10 +395,7 @@ const SuperAdminPage = ({ session }) => {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown
-                      className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"
-                      size={16}
-                    />
+
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -347,10 +418,6 @@ const SuperAdminPage = ({ session }) => {
                           </option>
                         ))}
                     </select>
-                    <ChevronDown
-                      className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"
-                      size={16}
-                    />
                   </div>
                 </div>
               </div>
@@ -410,7 +477,8 @@ const SuperAdminPage = ({ session }) => {
                         name="level_tegangan"
                         value={formData.level_tegangan}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 bg-[#F8FAFC] border border-gray-300 rounded-lg text-sm text-gray-800 font-bold focus:ring-2 focus:ring-[#00A2E9] outline-none shadow-sm cursor-pointer"
+                        disabled={!formData.lokasi_gi}
+                        className="w-full px-4 py-3 bg-[#F8FAFC] border border-gray-300 rounded-lg text-sm text-gray-800 font-bold focus:ring-2 focus:ring-[#00A2E9] outline-none shadow-sm cursor-pointer disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition"
                       >
                         <option value="">-- Pilih --</option>
                         <option value="150/20 kV">150/20 kV</option>
@@ -421,10 +489,6 @@ const SuperAdminPage = ({ session }) => {
                         <option value="70 kV">70 kV</option>
                         <option value="30 kV">30 kV</option>
                       </select>
-                      <ChevronDown
-                        className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"
-                        size={16}
-                      />
                     </div>
                   </div>
                 </div>
@@ -511,6 +575,9 @@ const SuperAdminPage = ({ session }) => {
                   <th className="p-4 text-xs font-bold text-gray-500 uppercase hidden md:table-cell">
                     ULTG
                   </th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase hidden lg:table-cell">
+                    Tahun Pembuatan
+                  </th>
                   <th className="p-4 text-xs font-bold text-gray-500 uppercase text-center">
                     Aksi
                   </th>
@@ -520,7 +587,7 @@ const SuperAdminPage = ({ session }) => {
                 {filteredAssets.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="5"
+                      colSpan="6"
                       className="p-12 text-center text-gray-400 flex flex-col items-center justify-center gap-2"
                     >
                       <AlertCircle size={40} opacity={0.5} />
@@ -560,21 +627,36 @@ const SuperAdminPage = ({ session }) => {
                           {asset.unit_ultg || "-"}
                         </span>
                       </td>
+                      <td className="p-4 text-sm text-gray-500 hidden lg:table-cell">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar size={12} className="text-gray-400" />
+                          <span className="text-xs font-bold">
+                            {asset.tahun_pembuatan || "-"}
+                          </span>
+                        </div>
+                      </td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() =>
-                            handleDelete(asset.id, asset.nama_trafo)
-                          }
-                          disabled={loadingDelete === asset.id}
-                          className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors disabled:opacity-50"
-                          title="Hapus Aset Ini"
-                        >
-                          {loadingDelete === asset.id ? (
-                            "..."
-                          ) : (
-                            <Trash2 size={16} />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => openEditModal(asset)}
+                            className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors"
+                            title="Edit Aset"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(asset)}
+                            disabled={loadingDelete === asset.id}
+                            className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-colors disabled:opacity-50"
+                            title="Hapus Aset"
+                          >
+                            {loadingDelete === asset.id ? (
+                              "..."
+                            ) : (
+                              <Trash2 size={16} />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -588,6 +670,197 @@ const SuperAdminPage = ({ session }) => {
           © 2026 PT PLN (Persero) Unit Pelaksana Transmisi Manado
         </div>
       </motion.div>
+
+      {/* 🔥 DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && assetToDelete && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-red-500 p-6 text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Trash2 size={32} className="text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-white">Hapus Aset?</h3>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-gray-600 mb-2">
+                Anda akan menghapus aset berikut secara permanen:
+              </p>
+              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                <p className="font-bold text-gray-800 text-lg">{assetToDelete.nama_trafo}</p>
+                <p className="text-sm text-gray-500">{assetToDelete.lokasi_gi}</p>
+              </div>
+
+              {/* 🔥 INPUT VERIFIKASI */}
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                <p className="text-xs text-red-600 font-medium mb-2">
+                  ⚠️ Ketik <span className="font-bold">HAPUS</span> untuk mengkonfirmasi:
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="Ketik HAPUS di sini..."
+                  className="w-full px-4 py-2 border border-red-300 rounded-lg text-center font-bold text-red-600 focus:ring-2 focus:ring-red-500 outline-none"
+                />
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Tindakan ini tidak dapat dibatalkan!
+              </p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setAssetToDelete(null);
+                  setDeleteConfirmText("");
+                }}
+                className="flex-1 py-4 text-gray-600 hover:bg-gray-50 font-bold transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={loadingDelete || deleteConfirmText.toLowerCase() !== "hapus"}
+                className="flex-1 py-4 bg-red-500 text-white hover:bg-red-600 font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingDelete ? "Menghapus..." : "Ya, Hapus"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔥 EDIT MODAL */}
+      {showEditModal && editFormData && (
+        <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="bg-[#0072BC] p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Edit2 size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Edit Aset Trafo</h3>
+                  <p className="text-xs text-white/70">{editFormData.unit_ultg}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditFormData(null);
+                }}
+                className="p-2 hover:bg-white/10 rounded-lg transition"
+              >
+                <X size={20} className="text-white" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Lokasi GI</label>
+                  <input
+                    type="text"
+                    name="lokasi_gi"
+                    value={editFormData.lokasi_gi}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nama Trafo</label>
+                  <input
+                    type="text"
+                    name="nama_trafo"
+                    value={editFormData.nama_trafo}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-500 uppercase">Merk Pabrikan</label>
+                <input
+                  type="text"
+                  name="merk"
+                  value={editFormData.merk}
+                  onChange={handleEditChange}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Nomor Seri</label>
+                  <input
+                    type="text"
+                    name="serial_number"
+                    value={editFormData.serial_number}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-500 uppercase">Tahun Pembuatan</label>
+                  <input
+                    type="text"
+                    name="tahun_pembuatan"
+                    value={editFormData.tahun_pembuatan}
+                    onChange={handleEditChange}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-500 uppercase">Level Tegangan</label>
+                <select
+                  name="level_tegangan"
+                  value={editFormData.level_tegangan}
+                  onChange={handleEditChange}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+                >
+                  <option value="">-- Pilih --</option>
+                  <option value="150/20 kV">150/20 kV</option>
+                  <option value="150/70 kV">150/70 kV</option>
+                  <option value="70/20 kV">70/20 kV</option>
+                  <option value="150 kV">150 kV</option>
+                  <option value="275 kV">275 kV</option>
+                  <option value="70 kV">70 kV</option>
+                  <option value="30 kV">30 kV</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditFormData(null);
+                }}
+                className="flex-1 py-4 text-gray-600 hover:bg-gray-100 font-bold transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmEdit}
+                disabled={loadingEdit}
+                className="flex-1 py-4 bg-[#0072BC] text-white hover:bg-[#005E7F] font-bold transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {loadingEdit ? (
+                  "Menyimpan..."
+                ) : (
+                  <>
+                    <Save size={16} /> Simpan Perubahan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
