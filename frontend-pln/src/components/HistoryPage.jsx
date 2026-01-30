@@ -254,6 +254,9 @@ const HistoryPage = ({
       result = result.sort((a, b) => (b.tdcg || 0) - (a.tdcg || 0));
     } else if (sortTdcg === "lowest") {
       result = result.sort((a, b) => (a.tdcg || 0) - (b.tdcg || 0));
+    } else {
+      // Default: Sort by ID descending (newest data first at top)
+      result = result.sort((a, b) => (b.id || 0) - (a.id || 0));
     }
 
     return result;
@@ -296,9 +299,9 @@ const HistoryPage = ({
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    
+
     setIsDeleting(true);
-    
+
     try {
       if (deleteTarget.type === 'single') {
         await supabase.from("riwayat_uji").delete().eq("id", deleteTarget.id);
@@ -316,7 +319,7 @@ const HistoryPage = ({
         await onDeleteAll();
         toast.success("Semua data berhasil dihapus");
       }
-      
+
       fetchHistory();
     } catch (e) {
       toast.error("Gagal menghapus: " + e.message);
@@ -419,12 +422,10 @@ const HistoryPage = ({
     setShowDeleteModal(true);
   };
 
-  const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${
-    isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
-  }`;
-  const tdClass = `px-6 py-4 border-b ${
-    isDarkMode ? "border-slate-700" : "border-gray-100"
-  }`;
+  const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
+    }`;
+  const tdClass = `px-6 py-4 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"
+    }`;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
@@ -597,7 +598,7 @@ const HistoryPage = ({
                       className="flex items-center justify-center w-full"
                     >
                       {selectedIds.length === filteredData.length &&
-                      filteredData.length > 0 ? (
+                        filteredData.length > 0 ? (
                         <CheckSquare size={18} className="text-blue-500" />
                       ) : (
                         <Square size={18} className="text-gray-400" />
@@ -628,7 +629,7 @@ const HistoryPage = ({
                   </td>
                 </tr>
               ) : (
-                paginatedData.map((item) => (
+                paginatedData.map((item, index) => (
                   <tr
                     key={item.id}
                     onClick={() => selectionMode && toggleSelectItem(item.id)}
@@ -651,7 +652,7 @@ const HistoryPage = ({
                         {item.tanggal_sampling}
                       </div>
                       <div className="text-xs text-gray-500 font-mono mt-1">
-                        #{item.id}
+                        #{filteredData.length - ((currentPage - 1) * itemsPerPage + index)}
                       </div>
                     </td>
                     <td className={tdClass}>
@@ -677,34 +678,58 @@ const HistoryPage = ({
                     {!selectionMode && (
                       <td className={`text-center ${tdClass}`}>
                         <div className="flex justify-center gap-2">
-                          <button
-                            onClick={() => openEditModal(item)}
-                            className="p-2 text-orange-500 bg-orange-50 rounded hover:bg-orange-100"
-                            title="Edit Identitas"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => setSelectedItem(item)}
-                            className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100"
-                            title="Lihat Detail"
-                          >
-                            <Info size={16} />
-                          </button>
-                          <button
-                            onClick={() => generatePDFFromTemplate(item)}
-                            className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100"
-                            title="Cetak PDF"
-                          >
-                            <Download size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100"
-                            title="Hapus"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {/* Edit Button with Tooltip */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => openEditModal(item)}
+                              className="p-2 text-orange-500 bg-orange-50 rounded hover:bg-orange-100 transition-colors"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                              Edit identitas trafo & sampling
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                            </div>
+                          </div>
+                          {/* Detail Button with Tooltip */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => setSelectedItem(item)}
+                              className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                            >
+                              <Info size={16} />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                              Lihat detail hasil analisis DGA
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                            </div>
+                          </div>
+                          {/* Download PDF Button with Tooltip */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => generatePDFFromTemplate(item)}
+                              className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100 transition-colors"
+                            >
+                              <Download size={16} />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                              Cetak laporan PDF pengujian
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                            </div>
+                          </div>
+                          {/* Delete Button with Tooltip */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                              Hapus data pengujian ini
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                            </div>
+                          </div>
                         </div>
                       </td>
                     )}
@@ -1143,13 +1168,12 @@ const HistoryPage = ({
                       value={deleteConfirmText}
                       onChange={(e) => setDeleteConfirmText(e.target.value)}
                       placeholder="Ketik HAPUS di sini..."
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${
-                        deleteConfirmText.trim().toUpperCase() === "HAPUS"
-                          ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                          : isDarkMode
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === "HAPUS"
+                        ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                        : isDarkMode
                           ? "border-slate-600 bg-slate-700 text-white"
                           : "border-gray-300 bg-white"
-                      }`}
+                        }`}
                     />
                   </div>
 
@@ -1181,11 +1205,10 @@ const HistoryPage = ({
               <button
                 onClick={confirmDelete}
                 disabled={(deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() !== "HAPUS") || isDeleting}
-                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  ((deleteTarget?.type !== 'all') || (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS")) && !isDeleting
-                    ? "bg-red-600 hover:bg-red-700 text-white"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${((deleteTarget?.type !== 'all') || (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS")) && !isDeleting
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  }`}
               >
                 {isDeleting ? (
                   <>
