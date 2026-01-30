@@ -96,6 +96,11 @@ const HistoryPage = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // State Delete Confirmation Modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'single' | 'batch' | 'all', id?: number, count?: number }
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
   // State Batch
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -283,13 +288,43 @@ const HistoryPage = ({
 
   // --- HANDLERS ---
   const handleDelete = async (id) => {
-    if (!window.confirm("Hapus data ini?")) return;
+    // Tampilkan modal konfirmasi
+    const item = historyData.find((d) => d.id === id);
+    setDeleteTarget({ type: 'single', id, item });
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    
+    setIsDeleting(true);
+    
     try {
-      await supabase.from("riwayat_uji").delete().eq("id", id);
-      toast.success("Terhapus");
+      if (deleteTarget.type === 'single') {
+        await supabase.from("riwayat_uji").delete().eq("id", deleteTarget.id);
+        toast.success("Data berhasil dihapus");
+      } else if (deleteTarget.type === 'batch') {
+        let count = 0;
+        for (const id of selectedIds) {
+          await supabase.from("riwayat_uji").delete().eq("id", id);
+          count++;
+        }
+        toast.success(`${count} data berhasil dihapus`);
+        setSelectedIds([]);
+        setSelectionMode(false);
+      } else if (deleteTarget.type === 'all') {
+        await onDeleteAll();
+        toast.success("Semua data berhasil dihapus");
+      }
+      
       fetchHistory();
-    } catch {
-      toast.error("Gagal hapus");
+    } catch (e) {
+      toast.error("Gagal menghapus: " + e.message);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+      setDeleteTarget(null);
+      setDeleteConfirmText("");
     }
   };
 
@@ -298,7 +333,10 @@ const HistoryPage = ({
       toast.info("Data kosong.");
       return;
     }
-    onDeleteAll();
+    // Tampilkan modal konfirmasi untuk hapus semua
+    setDeleteTarget({ type: 'all', count: historyData.length });
+    setDeleteConfirmText("");
+    setShowDeleteModal(true);
   };
 
   const toggleSelectionMode = () => {
@@ -376,23 +414,9 @@ const HistoryPage = ({
       toast.warning("Pilih minimal 1 data.");
       return;
     }
-    if (!window.confirm(`Hapus ${selectedIds.length} data terpilih?`)) return;
-
-    setIsDeleting(true);
-    let count = 0;
-    for (const id of selectedIds) {
-      try {
-        await supabase.from("riwayat_uji").delete().eq("id", id);
-        count++;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    toast.success(`Terhapus ${count} data.`);
-    fetchHistory();
-    setSelectedIds([]);
-    setSelectionMode(false);
-    setIsDeleting(false);
+    // Tampilkan modal konfirmasi
+    setDeleteTarget({ type: 'batch', count: selectedIds.length });
+    setShowDeleteModal(true);
   };
 
   const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${
@@ -607,20 +631,18 @@ const HistoryPage = ({
                 paginatedData.map((item) => (
                   <tr
                     key={item.id}
-                    className={`${isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"} ${selectionMode && selectedIds.includes(item.id) ? (isDarkMode ? "bg-blue-900/20" : "bg-blue-50") : ""}`}
+                    onClick={() => selectionMode && toggleSelectItem(item.id)}
+                    className={`${isDarkMode ? "hover:bg-slate-800" : "hover:bg-gray-50"} ${selectionMode && selectedIds.includes(item.id) ? (isDarkMode ? "bg-blue-900/20" : "bg-blue-50") : ""} ${selectionMode ? "cursor-pointer" : ""}`}
                   >
                     {selectionMode && (
                       <td className={`text-center ${tdClass}`}>
-                        <button
-                          onClick={() => toggleSelectItem(item.id)}
-                          className="flex items-center justify-center w-full"
-                        >
+                        <div className="flex items-center justify-center w-full">
                           {selectedIds.includes(item.id) ? (
                             <CheckSquare size={18} className="text-blue-500" />
                           ) : (
                             <Square size={18} className="text-gray-400" />
                           )}
-                        </button>
+                        </div>
                       </td>
                     )}
                     <td className={tdClass}>
@@ -1028,6 +1050,155 @@ const HistoryPage = ({
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div
+            className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
+          >
+            {/* Header */}
+            <div className="bg-red-600 p-6 text-white text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/20 flex items-center justify-center">
+                <AlertTriangle size={32} className="text-white" />
+              </div>
+              <h3 className="text-xl font-bold">
+                {deleteTarget?.type === 'single' && "Konfirmasi Hapus Data"}
+                {deleteTarget?.type === 'batch' && "Konfirmasi Hapus Data Terpilih"}
+                {deleteTarget?.type === 'all' && "Konfirmasi Hapus SEMUA Data"}
+              </h3>
+              <p className="text-sm opacity-80 mt-1">
+                {deleteTarget?.type === 'single' && "Anda akan menghapus 1 data pengujian"}
+                {deleteTarget?.type === 'batch' && `Anda akan menghapus ${deleteTarget.count} data terpilih`}
+                {deleteTarget?.type === 'all' && `Anda akan menghapus SEMUA data pengujian (${deleteTarget?.count || 0} data)`}
+              </p>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              {/* Info data yang akan dihapus */}
+              {deleteTarget?.type === 'single' && deleteTarget.item && (
+                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
+                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                    {deleteTarget.item.nama_trafo}
+                  </p>
+                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                    {deleteTarget.item.lokasi_gi} • {deleteTarget.item.tanggal_sampling}
+                  </p>
+                  <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}>
+                    ID: #{deleteTarget.item.id}
+                  </p>
+                </div>
+              )}
+
+              {deleteTarget?.type === 'batch' && (
+                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
+                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                    {deleteTarget.count} Data Terpilih
+                  </p>
+                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                    Data yang dipilih akan dihapus secara permanen
+                  </p>
+                </div>
+              )}
+
+              {deleteTarget?.type === 'all' && (
+                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
+                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+                    {deleteTarget?.count || 0} Data Akan Dihapus
+                  </p>
+                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                    Seluruh riwayat pengujian DGA akan dihapus secara permanen
+                  </p>
+                </div>
+              )}
+
+              <div className={`p-4 rounded-lg border-2 border-dashed mb-4 ${isDarkMode ? "border-red-800 bg-red-900/20" : "border-red-200 bg-red-50"}`}>
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className={`text-sm font-bold ${isDarkMode ? "text-red-400" : "text-red-700"}`}>
+                      Peringatan!
+                    </p>
+                    <p className={`text-xs ${isDarkMode ? "text-red-300/80" : "text-red-600/80"}`}>
+                      Tindakan ini tidak dapat dibatalkan. Data yang dihapus tidak bisa dikembalikan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Double verification input - hanya untuk hapus semua */}
+              {deleteTarget?.type === 'all' && (
+                <>
+                  <div className="mb-4">
+                    <label className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
+                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS</span> untuk konfirmasi:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="Ketik HAPUS di sini..."
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${
+                        deleteConfirmText.trim().toUpperCase() === "HAPUS"
+                          ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                          : isDarkMode
+                          ? "border-slate-600 bg-slate-700 text-white"
+                          : "border-gray-300 bg-white"
+                      }`}
+                    />
+                  </div>
+
+                  {/* Progress indicator */}
+                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== "HAPUS" && (
+                    <p className={`text-xs text-center mb-4 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                      {"HAPUS".slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
+                        ? `✓ ${deleteConfirmText.trim().length}/5 karakter benar`
+                        : "✗ Ketik 'HAPUS' dengan benar"}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className={`p-4 border-t flex gap-3 ${isDarkMode ? "border-slate-700 bg-slate-900" : "border-gray-100 bg-gray-50"}`}>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteTarget(null);
+                  setDeleteConfirmText("");
+                }}
+                disabled={isDeleting}
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm transition-all ${isDarkMode ? "bg-slate-700 hover:bg-slate-600 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-700"}`}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={(deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() !== "HAPUS") || isDeleting}
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  ((deleteTarget?.type !== 'all') || (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS")) && !isDeleting
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Hapus Permanen
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

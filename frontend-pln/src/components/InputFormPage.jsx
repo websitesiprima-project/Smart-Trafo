@@ -422,12 +422,6 @@ const InputFormPage = ({
                     <span className="text-sm font-sans text-gray-500">ppm</span>
                   </p>
                 </div>
-                <button
-                  onClick={() => window.print()}
-                  className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-bold shadow-sm transition-all"
-                >
-                  <Printer size={16} /> Cetak
-                </button>
               </div>
             </div>
 
@@ -481,6 +475,7 @@ const InputFormPage = ({
                 </h4>
                 <div className="w-full h-full flex items-center justify-center p-4">
                   <div className="w-full max-w-[450px] aspect-square">
+                    <br />
                     <DuvalPentagon
                       h2={formData.h2}
                       ch4={formData.ch4}

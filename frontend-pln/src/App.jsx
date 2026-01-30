@@ -313,7 +313,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const payload = { ...formData, diambil_oleh: session?.user?.email };
+      const payload = { ...formData };
 
       const res = await fetch(`${API_URL}/predict`, {
         method: "POST",
@@ -331,20 +331,11 @@ export default function Home() {
       // 🔥 FIX: HAPUS KEY_GAS & JENIS_MINYAK SEBELUM KIRIM
       const { jenis_minyak, key_gas, ...cleanFormData } = formData;
 
-      const dataToSave = {
-        ...cleanFormData,
-        tdcg: resultData.tdcg_value || 0,
-        status_ieee: resultData.ieee_status || "Normal",
-        diagnosa: resultData.rogers_diagnosis || "-",
-        ultg_pemilik: finalOwner,
-        diambil_oleh: session?.user?.email,
-        created_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
-      if (error) throw error;
-
-      toast.success(`Tersimpan ke ${finalOwner}`);
+      // Backend sudah menyimpan hasil (termasuk `hasil_ai`/`volty_chat`).
+      // Hindari insert duplikat dari frontend — cukup refresh history.
+      toast.success(`Analisis selesai dan disimpan ke ${finalOwner}`);
+      // Refresh daftar history agar menampilkan record yang baru disimpan oleh backend
+      if (typeof fetchHistory === "function") await fetchHistory();
     } catch (err) {
       console.error(err);
       toast.error(err.message);
