@@ -76,10 +76,10 @@ const formatDate = (dateString) => {
   return isNaN(date.getTime())
     ? ""
     : date.toLocaleDateString("id-ID", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
 };
 
 const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
@@ -386,13 +386,12 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   <Popup>
                     <div className="font-sans text-gray-800">
                       <div
-                        className={`p-3 text-white flex justify-between items-center ${
-                          status.includes("KRITIS")
-                            ? "bg-red-600"
-                            : status.includes("WASPADA")
-                              ? "bg-orange-500"
-                              : "bg-blue-600"
-                        }`}
+                        className={`p-3 text-white flex justify-between items-center ${status.includes("KRITIS")
+                          ? "bg-red-600"
+                          : status.includes("WASPADA")
+                            ? "bg-orange-500"
+                            : "bg-blue-600"
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <Server size={16} />
@@ -431,15 +430,14 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                               </div>
                               <div className="text-right">
                                 <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                                    (item.status_ieee || "").includes("KRITIS")
+                                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") ||
+                                      (item.status_ieee || "").toUpperCase().includes("COND 3")
                                       ? "bg-red-500 text-white"
-                                      : (item.status_ieee || "").includes(
-                                            "WASPADA",
-                                          )
+                                      : (item.status_ieee || "").toUpperCase().includes("WASPADA") ||
+                                        (item.status_ieee || "").toUpperCase().includes("COND 2")
                                         ? "bg-orange-500 text-white"
                                         : "bg-green-500 text-white"
-                                  }`}
+                                    }`}
                                 >
                                   {(item.status_ieee || "Normal").split(" ")[0]}
                                 </span>
@@ -458,6 +456,40 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
               );
             })}
           </MapContainer>
+
+          {/* MAP LEGEND */}
+          <div
+            className={`absolute bottom-4 left-4 z-[1000] p-4 rounded-xl shadow-lg border ${isDarkMode
+              ? "bg-slate-800/95 border-slate-600"
+              : "bg-white/95 border-slate-200"
+              }`}
+          >
+            <h4
+              className={`text-xs font-bold uppercase mb-3 flex items-center gap-2 ${textMain}`}
+            >
+              <MapIcon size={14} /> Legenda Status
+            </h4>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-green-500 shadow-sm"></div>
+                <span className={`text-xs font-medium ${textSub}`}>
+                  Normal - Kondisi Aman
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-500 shadow-sm"></div>
+                <span className={`text-xs font-medium ${textSub}`}>
+                  Waspada - Perlu Perhatian
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-500 shadow-sm animate-pulse"></div>
+                <span className={`text-xs font-medium ${textSub}`}>
+                  Kritis - Segera Tindak Lanjut
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* KOLOM KANAN: SIDE PANEL */}
@@ -535,11 +567,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                       <div className="flex items-center gap-3">
                         {/* Rank Badge: Emas untuk #1, Abu-abu untuk lainnya */}
                         <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${
-                            idx === 0
-                              ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30"
-                              : "bg-gray-100 text-gray-500"
-                          }`}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${idx === 0
+                            ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30"
+                            : "bg-gray-100 text-gray-500"
+                            }`}
                         >
                           {idx + 1}
                         </div>
@@ -593,14 +624,12 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       {selectedTrafo && (
         <div className="fixed top-0 left-0 w-screen h-screen z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div
-            className={`w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${
-              isDarkMode ? "bg-slate-800" : "bg-white"
-            }`}
+            className={`w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${isDarkMode ? "bg-slate-800" : "bg-white"
+              }`}
           >
             <div
-              className={`flex justify-between items-center p-6 border-b ${
-                isDarkMode ? "border-slate-700" : "border-gray-100"
-              }`}
+              className={`flex justify-between items-center p-6 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"
+                }`}
             >
               <div>
                 <h3
@@ -624,11 +653,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   <button
                     key={gas.key}
                     onClick={() => toggleSeries(gas.key)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold border transition ${
-                      activeSeries[gas.key]
-                        ? "bg-blue-500/10 text-blue-600 border-blue-500"
-                        : "opacity-50 grayscale"
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-bold border transition ${activeSeries[gas.key]
+                      ? "bg-blue-500/10 text-blue-600 border-blue-500"
+                      : "opacity-50 grayscale"
+                      }`}
                   >
                     {gas.key}
                   </button>
