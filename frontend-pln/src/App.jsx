@@ -635,7 +635,7 @@ export default function Home() {
             )}
             {activePage === "super_admin" && userRole === "super_admin" && (
               <PageTransition key="admin">
-                <SuperAdminPage session={session} />
+                <SuperAdminPage session={session} isDarkMode={isDarkMode} />
               </PageTransition>
             )}
           </AnimatePresence>
