@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 // 🔥 IMPOR DATA ASET LENGKAP
 import { allGIs } from "../data/assetData";
+import { supabase } from "../lib/supabaseClient";
 import {
   Map as MapIcon,
   Zap,
@@ -48,7 +49,7 @@ const createCustomIcon = (status) => {
     iconUrl: iconUrl,
     iconSize: [50, 50],
     iconAnchor: [25, 50],
-    popupAnchor: [0, -45],
+    popupAnchor: [0, 10],
     className: "custom-marker-img",
   });
 };
@@ -95,6 +96,26 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
 
   const toggleSeries = (key) =>
     setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // 🔥 STATE UNTUK TOTAL ASET DARI DATABASE
+  const [totalDbAssets, setTotalDbAssets] = useState(0);
+
+  // 🔥 FETCH TOTAL ASET DARI SUPABASE
+  useEffect(() => {
+    const fetchTotalAssets = async () => {
+      try {
+        const { count, error } = await supabase
+          .from("assets_trafo")
+          .select("*", { count: "exact", head: true });
+        if (!error && count !== null) {
+          setTotalDbAssets(count);
+        }
+      } catch (err) {
+        console.error("Error fetching asset count:", err);
+      }
+    };
+    fetchTotalAssets();
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = selectedTrafo ? "hidden" : "";
@@ -273,11 +294,32 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
   return (
     <div className="space-y-6 pb-20">
       <style>{`
-        .leaflet-popup-content-wrapper { border-radius: 12px; padding: 0; overflow: hidden; }
-        .leaflet-popup-content { margin: 0; width: 320px !important; }
-        .custom-popup-scroll::-webkit-scrollbar { width: 4px; }
+        .leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .leaflet-popup-content { margin: 0; width: 280px !important; }
+        .leaflet-popup-close-button {
+          width: 18px !important;
+          height: 18px !important;
+          font-size: 14px !important;
+          font-weight: bold !important;
+          color: white !important;
+          background: rgba(0,0,0,0.25) !important;
+          border-radius: 50% !important;
+          top: 8px !important;
+          right: 8px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          line-height: 1 !important;
+          transition: all 0.2s ease !important;
+        }
+        .leaflet-popup-close-button:hover {
+          background: rgba(255,255,255,0.3) !important;
+          transform: scale(1.1) !important;
+        }
+        .custom-popup-scroll::-webkit-scrollbar { width: 3px; }
         .custom-popup-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
-        .custom-popup-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+        .custom-popup-scroll::-webkit-scrollbar-thumb { background: #bbb; border-radius: 3px; }
       `}</style>
 
       {/* HEADER STATS */}
@@ -309,10 +351,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Total Aset (Uji)
+                Total Aset
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
-                {globalStats.totalAssets}
+                {totalDbAssets}
               </p>
             </div>
           </div>
@@ -362,7 +404,8 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             style={{ height: "100%", width: "100%" }}
             bounds={mapBounds || undefined}
             maxBounds={mapBounds || undefined}
-            maxBoundsViscosity={0.05}
+            maxBoundsViscosity={1}
+            scrollWheelZoom={true}
           >
             <TileLayer
               attribution="&copy; PLN"
@@ -383,28 +426,32 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   position={[gi.lat, gi.lng]}
                   icon={createCustomIcon(status)}
                 >
-                  <Popup>
+                  <Popup
+                    autoPan={true}
+                    autoPanPaddingTopLeft={[10, 120]}
+                    autoPanPaddingBottomRight={[10, 10]}
+                  >
                     <div className="font-sans text-gray-800">
                       <div
-                        className={`p-3 text-white flex justify-between items-center ${status.includes("KRITIS")
-                          ? "bg-red-600"
+                        className={`px-4 py-3 pr-10 text-white flex justify-between items-center ${status.includes("KRITIS")
+                          ? "bg-gradient-to-r from-red-600 to-red-500"
                           : status.includes("WASPADA")
-                            ? "bg-orange-500"
-                            : "bg-blue-600"
+                            ? "bg-gradient-to-r from-orange-500 to-amber-500"
+                            : "bg-gradient-to-r from-blue-600 to-blue-500"
                           }`}
                       >
                         <div className="flex items-center gap-2">
                           <Server size={16} />
-                          <h3 className="font-bold text-sm m-0 uppercase">
+                          <h3 className="font-bold text-sm m-0 uppercase tracking-wide">
                             {gi.name}
                           </h3>
                         </div>
-                        <span className="text-[10px] bg-black/20 px-2 py-0.5 rounded font-bold">
+                        <span className="text-[10px] bg-white/20 px-2 py-1 rounded font-bold">
                           {trafoList.length} Unit
                         </span>
                       </div>
 
-                      <div className="bg-white max-h-[250px] overflow-y-auto custom-popup-scroll">
+                      <div className="bg-white max-h-[160px] overflow-y-auto custom-popup-scroll">
                         {trafoList.length > 0 ? (
                           trafoList.map((item, i) => (
                             <div
@@ -415,38 +462,35 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                                   unit: item.nama_trafo,
                                 })
                               }
-                              className="p-3 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center group"
-                            >
-                              <div>
-                                <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600">
-                                  {item.nama_trafo}
-                                </p>
-                                <p className="text-[10px] text-gray-500">
-                                  TDCG:{" "}
-                                  <span className="font-bold">
-                                    {Math.round(item.tdcg)} ppm
-                                  </span>
-                                </p>
-                              </div>
+                              className="px-4 py-3 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center group"
+                          >
+                            <div>
+                              <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600">
+                                {item.nama_trafo}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                TDCG: <span className="font-bold text-gray-700">{Math.round(item.tdcg)} ppm</span>
+                              </p>
+                            </div>
                               <div className="text-right">
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") ||
-                                      (item.status_ieee || "").toUpperCase().includes("COND 3")
-                                      ? "bg-red-500 text-white"
-                                      : (item.status_ieee || "").toUpperCase().includes("WASPADA") ||
-                                        (item.status_ieee || "").toUpperCase().includes("COND 2")
-                                        ? "bg-orange-500 text-white"
-                                        : "bg-green-500 text-white"
-                                    }`}
-                                >
-                                  {(item.status_ieee || "Normal").split(" ")[0]}
-                                </span>
-                              </div>
+                              <span
+                                className={`text-xs px-2 py-1 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") ||
+                                    (item.status_ieee || "").toUpperCase().includes("COND 3")
+                                    ? "bg-red-500 text-white"
+                                    : (item.status_ieee || "").toUpperCase().includes("WASPADA") ||
+                                      (item.status_ieee || "").toUpperCase().includes("COND 2")
+                                      ? "bg-orange-500 text-white"
+                                      : "bg-green-500 text-white"
+                                  }`}
+                              >
+                                {(item.status_ieee || "Normal").split(" ")[0]}
+                              </span>
+                            </div>
                             </div>
                           ))
                         ) : (
-                          <div className="p-4 text-center text-gray-400 text-xs">
-                            Belum ada data uji untuk GI ini.
+                          <div className="p-3 text-center text-gray-400 text-[10px]">
+                            Belum ada data uji
                           </div>
                         )}
                       </div>
@@ -539,10 +583,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             </div>
           </div>
 
-          {/* 🔥 MODIFIED SECTION: TOP HIGHEST TDCG (FORCE LIGHT MODE & RED BAR) */}
-          <div className="flex-[1.5] rounded-2xl border border-slate-200 shadow-sm p-0 flex flex-col overflow-hidden bg-white">
+          {/* 🔥 MODIFIED SECTION: TOP HIGHEST TDCG (DARK MODE SUPPORT) */}
+          <div className={`flex-[1.5] rounded-2xl border shadow-sm p-0 flex flex-col overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
             {/* Header: Biru PLN */}
-            <div className="p-4 border-b border-gray-100 bg-[#1B7A8F] text-white shadow-sm">
+            <div className={`p-4 border-b shadow-sm bg-[#1B7A8F] text-white ${isDarkMode ? "border-slate-600" : "border-gray-100"}`}>
               <h3 className="font-bold text-sm flex items-center gap-2">
                 <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />
                 Top 5 Highest TDCG
@@ -550,7 +594,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             </div>
             <div className="flex-1 overflow-y-auto p-0">
               {topTrafos.length === 0 ? (
-                <div className="text-center p-8 opacity-50 text-xs flex flex-col items-center gap-2 text-gray-500">
+                <div className={`text-center p-8 opacity-50 text-xs flex flex-col items-center gap-2 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
                   <Server size={32} className="opacity-20" />
                   Data Kosong
                 </div>
@@ -561,7 +605,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                     onClick={() =>
                       setSelectedTrafo({ gi: item.gi, unit: item.unit })
                     }
-                    className="group p-4 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 transition-all duration-200"
+                    className={`group p-4 cursor-pointer border-b last:border-0 transition-all duration-200 ${isDarkMode ? "hover:bg-slate-700 border-slate-700" : "hover:bg-blue-50 border-gray-100"}`}
                   >
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-3">
@@ -569,42 +613,42 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                         <div
                           className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${idx === 0
                             ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30"
-                            : "bg-gray-100 text-gray-500"
+                            : isDarkMode ? "bg-slate-600 text-slate-300" : "bg-gray-100 text-gray-500"
                             }`}
                         >
                           {idx + 1}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] bg-[#1B7A8F]/10 text-[#1B7A8F] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${isDarkMode ? "bg-[#1B7A8F]/20 text-[#4FC3F7]" : "bg-[#1B7A8F]/10 text-[#1B7A8F]"}`}>
                               {item.gi}
                             </span>
                           </div>
-                          <p className="font-bold text-sm mt-0.5 text-gray-900 group-hover:text-[#1B7A8F] transition-colors">
+                          <p className={`font-bold text-sm mt-0.5 transition-colors ${isDarkMode ? "text-white group-hover:text-[#4FC3F7]" : "text-gray-900 group-hover:text-[#1B7A8F]"}`}>
                             {item.unit}
                           </p>
                         </div>
                       </div>
 
                       <div className="text-right">
-                        <p className="text-[#1B7A8F] font-black text-lg flex items-center justify-end gap-1">
+                        <p className={`font-black text-lg flex items-center justify-end gap-1 ${isDarkMode ? "text-[#4FC3F7]" : "text-[#1B7A8F]"}`}>
                           <Flame
                             size={16}
                             className={
                               idx === 0
                                 ? "text-red-500 animate-pulse"
-                                : "text-gray-300"
+                                : isDarkMode ? "text-slate-500" : "text-gray-300"
                             }
                             fill={idx === 0 ? "#ef4444" : "none"}
                           />
                           {item.tdcg.toFixed(0)}
                         </p>
-                        <p className="text-[10px] text-gray-400">ppm</p>
+                        <p className={`text-[10px] ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}>ppm</p>
                       </div>
                     </div>
 
                     {/* Progress Bar: SOLID RED (NO GRADIENT) */}
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden relative">
+                    <div className={`w-full rounded-full h-2 overflow-hidden relative ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
                       <div
                         className="h-full rounded-full transition-all duration-1000 ease-out bg-red-500"
                         style={{

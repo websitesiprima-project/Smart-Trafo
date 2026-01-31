@@ -402,7 +402,7 @@ export default function Home() {
 
   return (
     <div
-      className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? "bg-[#0f172a] text-slate-200" : "bg-gray-100 text-slate-800"}`}
+      className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? "bg-[#0f172a] text-slate-200" : "bg-slate-100 text-slate-800"}`}
     >
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}

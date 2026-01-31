@@ -568,6 +568,9 @@ const SuperAdminPage = ({ session, isDarkMode }) => {
             <table className="w-full text-left border-collapse">
               <thead className={`sticky top-0 z-10 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
                 <tr>
+                  <th className={`p-4 text-xs font-bold uppercase text-center w-12 ${isDarkMode ? "text-slate-300" : "text-gray-500"}`}>
+                    No.
+                  </th>
                   <th className={`p-4 text-xs font-bold uppercase ${isDarkMode ? "text-slate-300" : "text-gray-500"}`}>
                     Lokasi GI
                   </th>
@@ -592,7 +595,7 @@ const SuperAdminPage = ({ session, isDarkMode }) => {
                 {filteredAssets.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="6"
+                      colSpan="7"
                       className={`p-12 text-center flex flex-col items-center justify-center gap-2 ${isDarkMode ? "text-slate-400" : "text-gray-400"}`}
                     >
                       <AlertCircle size={40} opacity={0.5} />
@@ -608,11 +611,14 @@ const SuperAdminPage = ({ session, isDarkMode }) => {
                     </td>
                   </tr>
                 ) : (
-                  filteredAssets.map((asset) => (
+                  filteredAssets.map((asset, index) => (
                     <tr
                       key={asset.id}
                       className={`transition-colors ${isDarkMode ? "hover:bg-slate-700/50" : "hover:bg-blue-50/50"}`}
                     >
+                      <td className={`p-4 text-sm font-bold text-center ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                        {index + 1}
+                      </td>
                       <td className={`p-4 text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-700"}`}>
                         {asset.lokasi_gi}
                       </td>

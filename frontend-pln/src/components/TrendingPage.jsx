@@ -280,22 +280,30 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
           {/* Info Count */}
           <div className="flex items-end">
             <div
-              className={`w-full p-3 rounded-lg border flex items-center justify-between ${
+              className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 shadow-sm ${
                 isDarkMode
-                  ? "bg-slate-800 border-slate-600"
-                  : "bg-blue-50 border-blue-100"
+                  ? "bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border-blue-700/50"
+                  : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200"
               }`}
             >
-              <span className={`text-xs font-bold ${textSub}`}>
-                Total Data Uji
-              </span>
-              <span className={`text-lg font-black ${textMain}`}>
-                {loadingChart ? (
-                  <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  processedData.length
-                )}
-              </span>
+              <div className={`p-3 rounded-lg ${isDarkMode ? "bg-blue-600/30" : "bg-blue-500/10"}`}>
+                <FileBarChart className="text-blue-500" size={24} />
+              </div>
+              <div className="flex-1">
+                <span className={`text-xs font-bold uppercase tracking-wide ${textSub}`}>
+                  Total Data Uji
+                </span>
+                <div className={`text-2xl font-black ${textMain}`}>
+                  {loadingChart ? (
+                    <Loader2 className="animate-spin" size={24} />
+                  ) : (
+                    <span className="flex items-baseline gap-1">
+                      {processedData.length}
+                      <span className={`text-sm font-medium ${textSub}`}>record</span>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
