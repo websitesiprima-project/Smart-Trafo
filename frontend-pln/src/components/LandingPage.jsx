@@ -51,7 +51,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
           }`}
         ></div>
 
-        <div className="container mx-auto px-6 grid md:grid-cols-2 gap-12 items-center relative z-10 py-12 md:py-0">
+        <div className="container mx-auto px-4 md:px-6 grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center relative z-10 py-8 md:py-0">
           <div className="space-y-8 animate-in slide-in-from-left-10 duration-700">
             {/* ... (Kode Label & Judul Tetap Sama) ... */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1B7A8F]/10 border border-[#1B7A8F]/20">
@@ -65,7 +65,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
               </span>
             </div>
 
-            <h1 className="text-5xl md:text-6xl font-extrabold leading-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight">
               Deteksi Dini, <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#1B7A8F] to-[#17A2B8]">
                 Cegah Kegagalan.
@@ -73,7 +73,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
             </h1>
 
             <p
-              className={`text-lg md:text-xl max-w-lg leading-relaxed ${
+              className={`text-base md:text-lg lg:text-xl max-w-lg leading-relaxed ${
                 isDarkMode ? "text-slate-400" : "text-slate-600"
               }`}
             >
@@ -83,19 +83,18 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
               real-time.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={onStart}
-                className="group flex items-center justify-center gap-3 px-8 py-4 bg-[#1B7A8F] hover:bg-[#156b7d] text-white rounded-xl font-bold text-lg shadow-xl shadow-[#1B7A8F]/30 transition-all active:scale-95"
+                className="group flex items-center justify-center gap-3 px-6 md:px-8 py-3 md:py-4 bg-[#1B7A8F] hover:bg-[#156b7d] text-white rounded-xl font-bold text-base md:text-lg shadow-xl shadow-[#1B7A8F]/30 transition-all active:scale-95"
               >
                 Mulai Analisis
                 <ArrowRight className="group-hover:translate-x-1 transition-transform" />
               </button>
 
-              {/* 2. Tambahkan onClick={onGuide} disini */}
               <button
                 onClick={onGuide}
-                className={`px-8 py-4 rounded-xl font-bold border transition-all ${
+                className={`px-6 md:px-8 py-3 md:py-4 rounded-xl font-bold border transition-all text-base md:text-lg ${
                   isDarkMode
                     ? "border-slate-700 hover:bg-slate-800 text-white"
                     : "border-slate-200 hover:bg-slate-50 text-slate-600"

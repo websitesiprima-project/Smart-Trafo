@@ -391,10 +391,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* KOLOM KIRI: MAP (Lebar 2 Kolom) */}
         <div
-          className={`lg:col-span-2 rounded-2xl border shadow-lg overflow-hidden h-[650px] relative z-0 ${cardBg}`}
+          className={`lg:col-span-2 rounded-2xl border shadow-lg overflow-hidden h-[400px] md:h-[550px] lg:h-[650px] relative z-0 ${cardBg}`}
         >
           <MapContainer
             center={[0.8, 124.5]}

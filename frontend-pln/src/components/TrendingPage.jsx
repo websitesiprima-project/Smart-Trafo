@@ -213,8 +213,8 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
       </div>
 
       {/* FILTER PANEL */}
-      <div className={`p-6 rounded-xl border shadow-sm ${cardBg}`}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className={`p-4 md:p-6 rounded-xl border shadow-sm ${cardBg}`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
           {/* Select GI */}
           <div>
             <label className={`block text-xs font-bold mb-2 ${textSub}`}>
@@ -362,7 +362,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
                 ))}
               </div>
             </div>
-            <div style={{ width: "100%", height: "500px" }}>
+            <div className="w-full h-[300px] md:h-[400px] lg:h-[500px]">
               <ResponsiveContainer>
                 <ComposedChart
                   data={processedData}
