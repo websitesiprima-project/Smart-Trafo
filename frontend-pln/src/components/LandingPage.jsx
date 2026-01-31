@@ -111,13 +111,13 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
                 Didukung Oleh Standar:
               </p>
               <div className="flex gap-4 opacity-70 grayscale hover:grayscale-0 transition-all">
-                <span className="font-bold text-sm border-b-2 border-[#1B7A8F]">
+                <span className="font-bold text-sm border-b-2 border-[#17A2B8]">
                   IEEE C57.104
                 </span>
                 <span className="font-bold text-sm border-b-2 border-[#17A2B8]">
                   IEC 60599
                 </span>
-                <span className="font-bold text-sm border-b-2 border-[#FFD700]">
+                <span className="font-bold text-sm border-b-2 border-[#17A2B8]">
                   SPLN T5.004
                 </span>
               </div>
@@ -169,7 +169,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
                 <p className="text-xs font-bold opacity-60 uppercase">
                   Akurasi AI
                 </p>{" "}
-                <p className="text-lg font-bold">96.5%</p>{" "}
+                <p className="text-lg font-bold">91.5%</p>{" "}
               </div>
             </div>
           </div>
