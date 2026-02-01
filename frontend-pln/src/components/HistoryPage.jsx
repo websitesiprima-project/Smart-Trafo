@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Edit2,
   Save,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -30,6 +31,7 @@ import DuvalPentagon from "./DuvalPentagon";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { supabase } from "../lib/supabaseClient";
+import ExcelImportModal from "./ExcelImportModal";
 
 // --- 1. DEFINISI MAPPING ---
 const ULTG_MAPPING = {
@@ -114,6 +116,9 @@ const HistoryPage = ({
   // Pagination (Dibuat State agar bisa diubah user)
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10); // Default 10
+
+  // State Import Excel
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // --- FETCH MASTER ASSETS ---
   useEffect(() => {
@@ -436,7 +441,7 @@ const HistoryPage = ({
             <h2
               className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-[#1B7A8F]"}`}
             >
-              Arsip Data Pengujian {userUnit ? `(${userUnit})` : ""}
+              Riwayat Arsip Data Pengujian {userUnit ? `(${userUnit})` : ""}
             </h2>
             <p
               className={`text-sm mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}
@@ -526,6 +531,12 @@ const HistoryPage = ({
           <div className="flex flex-col sm:flex-row gap-3">
             {!selectionMode ? (
               <>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
+                >
+                  <FileSpreadsheet size={16} /> <span>Import Excel</span>
+                </button>
                 <button
                   onClick={toggleSelectionMode}
                   className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-all"
@@ -1225,6 +1236,18 @@ const HistoryPage = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL IMPORT EXCEL */}
+      {showImportModal && (
+        <ExcelImportModal
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            fetchHistory();
+            setShowImportModal(false);
+          }}
+          isDarkMode={isDarkMode}
+        />
       )}
     </div>
   );
