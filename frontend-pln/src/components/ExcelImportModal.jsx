@@ -18,6 +18,52 @@ import { supabase } from "../lib/supabaseClient";
 
 const API_URL = "http://127.0.0.1:8000";
 
+// Mapping ULTG ke GI
+const ULTG_MAPPING = {
+  Lopana: [
+    "GI AMURANG",
+    "GI LOPANA",
+    "GI KAWANGKOAN",
+    "PLTP LAHENDONG 12",
+    "PLTP LAHENDONG 34",
+    "GI TOMOHON",
+    "GI TASIKRIA",
+    "GI TONSEALAMA",
+    "GI SAWANGAN",
+  ],
+  Sawangan: [
+    "GI TELING",
+    "GIS TELING",
+    "GIS SARIO",
+    "GI KEMA",
+    "GI TANJUNG MERAH",
+    "GI BITUNG",
+    "GI RANOMUUT",
+    "GI PANIKI",
+    "GI PANDU",
+    "GI LIKUPANG",
+    "GI LIKUPANG NEW",
+    "GI MSM",
+  ],
+  Kotamobagu: [
+    "PLTU SULUT 1",
+    "GI LOLAK",
+    "GI MOLIBAGU",
+    "GI OTAM",
+    "GI TUTUYAN",
+  ],
+  Gorontalo: [
+    "GI MARISA",
+    "GI TILAMUTA",
+    "GI TOLINGGULA",
+    "GI ANGGREK",
+    "GI ISIMU",
+    "GI GORONTALO BARU",
+    "GI BOTUPINGGE",
+    "GI BOROKO",
+  ],
+};
+
 // Mapping kolom Excel ke field API
 const COLUMN_MAPPING = {
   "Gardu Induk": "lokasi_gi",
@@ -131,7 +177,7 @@ const parseDate = (dateValue) => {
   return todayStr;
 };
 
-const ExcelImportModal = ({ onClose, onSuccess, isDarkMode }) => {
+const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }) => {
   const [file, setFile] = useState(null);
   const [parsedData, setParsedData] = useState([]);
   const [errors, setErrors] = useState([]);
@@ -394,6 +440,38 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode }) => {
 
         // Filter out example rows
         const validData = transformed.filter((row) => !row._isExample);
+        
+        // 🔥 VALIDASI ULTG: Cek apakah user berhak mengisi GI tersebut
+        if (userRole !== "super_admin" && userUnit) {
+          const allowedGIs = ULTG_MAPPING[userUnit] || [];
+          const ultgErrors = [];
+
+          validData.forEach((row, idx) => {
+            if (!row._isValid) return; // Skip jika sudah invalid dari validasi database
+
+            const rowGI = (row.lokasi_gi || "").trim();
+            const isAllowed = allowedGIs.some(
+              (allowed) =>
+                rowGI.toLowerCase().includes(allowed.toLowerCase()) ||
+                allowed.toLowerCase().includes(rowGI.toLowerCase())
+            );
+
+            if (!isAllowed) {
+              ultgErrors.push({
+                row: row._rowNum,
+                gi: rowGI,
+                trafo: row.nama_trafo,
+                type: "ultg_unauthorized",
+                message: `GI "${rowGI}" bukan bagian dari ULTG ${userUnit}. Hanya Super Admin yang dapat mengisi data ke semua GI.`
+              });
+            }
+          });
+
+          // Gabungkan error ULTG dengan validation errors lainnya
+          if (ultgErrors.length > 0) {
+            valErrors.push(...ultgErrors);
+          }
+        }
         
         // Check for validation errors
         if (valErrors.length > 0) {
@@ -845,10 +923,10 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode }) => {
                   <AlertTriangle className="text-orange-500 mt-0.5 flex-shrink-0" size={20} />
                   <div>
                     <p className={`font-semibold ${isDarkMode ? "text-orange-400" : "text-orange-700"}`}>
-                      Unit Trafo tidak terdaftar
+                      Data tidak dapat diproses
                     </p>
                     <p className={`text-sm mt-1 ${isDarkMode ? "text-orange-300/80" : "text-orange-600"}`}>
-                      Silahkan daftar terlebih dahulu atau hubungi admin UPT Manado
+                      Silahkan perbaiki data yang ditandai atau hubungi admin UPT Manado
                     </p>
                   </div>
                 </div>
@@ -864,15 +942,33 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode }) => {
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-100 text-red-600"}`}>
                         Baris {err.row}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${err.type === "gi_not_found" 
-                        ? (isDarkMode ? "bg-purple-500/20 text-purple-400" : "bg-purple-100 text-purple-600")
-                        : (isDarkMode ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-600")
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        err.type === "gi_not_found" 
+                          ? (isDarkMode ? "bg-purple-500/20 text-purple-400" : "bg-purple-100 text-purple-600")
+                          : err.type === "ultg_unauthorized"
+                            ? (isDarkMode ? "bg-red-500/20 text-red-400" : "bg-red-100 text-red-600")
+                            : (isDarkMode ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-600")
                       }`}>
-                        {err.type === "gi_not_found" ? "GI tidak terdaftar" : "Trafo tidak terdaftar"}
+                        {err.type === "gi_not_found" 
+                          ? "GI tidak terdaftar" 
+                          : err.type === "ultg_unauthorized"
+                            ? "Akses Ditolak"
+                            : "Trafo tidak terdaftar"}
                       </span>
                     </div>
-                    <div className={`text-sm ${theme.text}`}>
-                      <span className="font-medium">GI:</span> {err.gi} • <span className="font-medium">Trafo:</span> {err.trafo}
+                    <div className={`text-sm ${theme.text} ${err.type === "ultg_unauthorized" ? "font-semibold" : ""}`}>
+                      {err.type === "ultg_unauthorized" ? (
+                        <div>
+                          <p className="text-red-500 font-bold mb-1">⛔ {err.message}</p>
+                          <p className="text-xs opacity-70">
+                            <span className="font-medium">GI:</span> {err.gi} • <span className="font-medium">Trafo:</span> {err.trafo}
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="font-medium">GI:</span> {err.gi} • <span className="font-medium">Trafo:</span> {err.trafo}
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -314,6 +314,72 @@ export default function Home() {
     if (!formData.lokasi_gi || !formData.nama_trafo)
       return toast.error("Isi Lokasi & Trafo!");
 
+    // 🔥 VALIDASI ULTG: Cek apakah user berhak mengisi GI ini
+    if (userRole !== "super_admin" && userUnit) {
+      const MAPPING = findUnitByGI.__MAPPING || {
+        Lopana: [
+          "GI Lopana",
+          "GI Amurang",
+          "GI Kawangkoan",
+          "PLTP Lahendong",
+          "GI Tomohon",
+          "GI Tasikria",
+          "GI Tonsealama",
+          "GI Sawangan",
+          "PLTA Tanggari",
+        ],
+        Sawangan: [
+          "GI Teling",
+          "GIS Teling",
+          "GIS Sario",
+          "GI Bitung",
+          "GI Likupang",
+          "GI Paniki",
+          "GI Tanjung Merah",
+          "GI Ranomuut",
+          "GI Kema",
+          "GI Pandu",
+          "GI MSM",
+        ],
+        Kotamobagu: [
+          "GI Kotamobagu",
+          "GI Lolak",
+          "GI Otam",
+          "PLTU SULUT",
+          "GI Tutuyan",
+          "GI Molibagu",
+        ],
+        Gorontalo: [
+          "GI Gorontalo",
+          "GI Isimu",
+          "GI Marisa",
+          "GI Botupingge",
+          "GI Kwandang",
+          "GI Boroko",
+          "GI Anggrek",
+          "GI Tolinggula",
+          "GI Tilamuta",
+          "PLTG Maleo",
+          "PT BJA",
+        ],
+      };
+
+      const allowedGIs = MAPPING[userUnit] || [];
+      const inputGI = (formData.lokasi_gi || "").trim();
+      const isAllowed = allowedGIs.some(
+        (allowed) =>
+          inputGI.toLowerCase().includes(allowed.toLowerCase()) ||
+          allowed.toLowerCase().includes(inputGI.toLowerCase())
+      );
+
+      if (!isAllowed) {
+        return toast.error(
+          `⛔ Akses Ditolak: GI "${inputGI}" bukan bagian dari ULTG ${userUnit}. Hanya Super Admin yang dapat mengisi data ke semua GI.`,
+          { duration: 5000 }
+        );
+      }
+    }
+
     setLoading(true);
     try {
       const payload = { ...formData };

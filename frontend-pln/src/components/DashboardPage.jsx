@@ -324,7 +324,13 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       {/* HEADER STATS */}
       <div>
         <h2 className={`text-2xl font-bold mb-4 ${textMain}`}>
-          Executive Dashboard {userUnit ? `- ${userUnit} View` : ""}
+          Dashboard {
+            userRole === "super_admin"
+              ? "- UPT Manado"
+              : userUnit
+                ? `- ULTG ${userUnit}`
+                : ""
+          }
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div

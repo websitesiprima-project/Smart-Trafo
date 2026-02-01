@@ -447,7 +447,7 @@ const HistoryPage = ({
             <p
               className={`text-sm mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}
             >
-              Total: {filteredData.length} / {historyData.length} Data
+              Total: {filteredData.length} / {filteredData.length} Data
             </p>
           </div>
         </div>
@@ -1177,19 +1177,19 @@ const HistoryPage = ({
                 </div>
               </div>
 
-              {/* Double verification input - hanya untuk hapus semua */}
-              {deleteTarget?.type === 'all' && (
+              {/* 🔥 Double verification input - untuk hapus batch (ULTG only) dan hapus semua */}
+              {deleteTarget?.type === 'batch' && userRole !== "super_admin" && userUnit && (
                 <>
                   <div className="mb-4">
                     <label className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
-                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS</span> untuk konfirmasi:
+                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS ULTG {userUnit.toUpperCase()}</span> untuk konfirmasi:
                     </label>
                     <input
                       type="text"
                       value={deleteConfirmText}
                       onChange={(e) => setDeleteConfirmText(e.target.value)}
-                      placeholder="Ketik HAPUS di sini..."
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === "HAPUS"
+                      placeholder={`Ketik HAPUS ULTG ${userUnit.toUpperCase()} di sini...`}
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-sm uppercase tracking-wide outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === `HAPUS ULTG ${userUnit.toUpperCase()}`
                         ? "border-green-500 bg-green-50 dark:bg-green-900/20"
                         : isDarkMode
                           ? "border-slate-600 bg-slate-700 text-white"
@@ -1199,11 +1199,42 @@ const HistoryPage = ({
                   </div>
 
                   {/* Progress indicator */}
-                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== "HAPUS" && (
+                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== `HAPUS ULTG ${userUnit.toUpperCase()}` && (
                     <p className={`text-xs text-center mb-4 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                      {"HAPUS".slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
-                        ? `✓ ${deleteConfirmText.trim().length}/5 karakter benar`
-                        : "✗ Ketik 'HAPUS' dengan benar"}
+                      {`HAPUS ULTG ${userUnit.toUpperCase()}`.slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
+                        ? `✓ ${deleteConfirmText.trim().length}/${`HAPUS ULTG ${userUnit.toUpperCase()}`.length} karakter benar`
+                        : `✗ Ketik 'HAPUS ULTG ${userUnit.toUpperCase()}' dengan benar`}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {deleteTarget?.type === 'all' && (
+                <>
+                  <div className="mb-4">
+                    <label className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
+                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS SEMUANYA</span> untuk konfirmasi:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder="Ketik HAPUS SEMUANYA di sini..."
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === "HAPUS SEMUANYA"
+                        ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                        : isDarkMode
+                          ? "border-slate-600 bg-slate-700 text-white"
+                          : "border-gray-300 bg-white"
+                        }`}
+                    />
+                  </div>
+
+                  {/* Progress indicator */}
+                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== "HAPUS SEMUANYA" && (
+                    <p className={`text-xs text-center mb-4 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
+                      {"HAPUS SEMUANYA".slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
+                        ? `✓ ${deleteConfirmText.trim().length}/12 karakter benar`
+                        : "✗ Ketik 'HAPUS SEMUANYA' dengan benar"}
                     </p>
                   )}
                 </>
@@ -1225,11 +1256,19 @@ const HistoryPage = ({
               </button>
               <button
                 onClick={confirmDelete}
-                disabled={(deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() !== "HAPUS") || isDeleting}
-                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${((deleteTarget?.type !== 'all') || (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS")) && !isDeleting
-                  ? "bg-red-600 hover:bg-red-700 text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
+                disabled={
+                  isDeleting ||
+                  (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() !== "HAPUS SEMUANYA") ||
+                  (deleteTarget?.type === 'batch' && userRole !== "super_admin" && userUnit && deleteConfirmText.trim().toUpperCase() !== `HAPUS ULTG ${userUnit.toUpperCase()}`)
+                }
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  !isDeleting &&
+                  (deleteTarget?.type === 'single' ||
+                   (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS SEMUANYA") ||
+                   (deleteTarget?.type === 'batch' && (userRole === "super_admin" || !userUnit || deleteConfirmText.trim().toUpperCase() === `HAPUS ULTG ${userUnit.toUpperCase()}`)))
+                    ? "bg-red-600 hover:bg-red-700 text-white"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                }`}
               >
                 {isDeleting ? (
                   <>
@@ -1257,6 +1296,8 @@ const HistoryPage = ({
             setShowImportModal(false);
           }}
           isDarkMode={isDarkMode}
+          userRole={userRole}
+          userUnit={userUnit}
         />
       )}
     </div>
