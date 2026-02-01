@@ -79,6 +79,7 @@ export default function Home() {
   });
   const [activeField, setActiveField] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [guideTab, setGuideTab] = useState("ieee"); // Tab aktif di halaman panduan
 
   // Persist settings
   useEffect(() => {
@@ -162,15 +163,17 @@ export default function Home() {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
+      // 🔥 FIX: Naikkan limit agar semua data riwayat terambil (dashboard & distribusi kondisi akurat)
       let query = supabase
         .from("riwayat_uji")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(2000);
 
       const { data, error } = await query;
       if (error) throw error;
       setHistoryData(data || []);
+      console.log(`✅ Data riwayat dimuat: ${data?.length || 0} records`);
     } catch (error) {
       console.error(error);
       toast.error("Gagal sinkronisasi data.");
@@ -344,9 +347,13 @@ export default function Home() {
     }
   };
 
-  const navigateTo = (page) => {
+  const navigateTo = (page, options = {}) => {
     setActivePage(page);
     setIsSidebarOpen(false);
+    // Jika ada guideTab option, set tab yang aktif
+    if (options.guideTab) {
+      setGuideTab(options.guideTab);
+    }
   };
 
   if (authChecking) return <LoadingScreen />;
@@ -625,12 +632,13 @@ export default function Home() {
                   onDeleteAll={handleDeleteAllHistory}
                   userRole={userRole}
                   userUnit={userUnit}
+                  onNavigateToGuide={(tab) => navigateTo("guide", { guideTab: tab })}
                 />
               </PageTransition>
             )}
             {activePage === "guide" && (
               <PageTransition key="guide">
-                <GuidePage isDarkMode={isDarkMode} />
+                <GuidePage isDarkMode={isDarkMode} initialTab={guideTab} />
               </PageTransition>
             )}
             {activePage === "super_admin" && userRole === "super_admin" && (

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BookOpen,
   Info,
@@ -12,8 +12,13 @@ import {
   GitMerge, // Icon untuk Rogers (Rasio)
 } from "lucide-react";
 
-const GuidePage = ({ isDarkMode }) => {
-  const [activeTab, setActiveTab] = useState("ieee");
+const GuidePage = ({ isDarkMode, initialTab = "ieee" }) => {
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Update tab when navigated from another page
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // --- DATA 1: Limit IEEE C57.104 ---
   const ieeeLimits = [

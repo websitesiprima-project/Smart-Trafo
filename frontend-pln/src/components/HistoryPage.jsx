@@ -87,6 +87,7 @@ const HistoryPage = ({
   onDeleteAll,
   userRole,
   userUnit,
+  onNavigateToGuide,
 }) => {
   // State Filter & Search
   const [searchTerm, setSearchTerm] = useState("");
@@ -619,7 +620,16 @@ const HistoryPage = ({
                 )}
                 <th className={thClass}>Tanggal</th>
                 <th className={thClass}>Identitas</th>
-                <th className={thClass}>Status (IEEE C57.104)</th>
+                <th className={thClass}>
+                  Status{" "}
+                  <span
+                    onClick={() => onNavigateToGuide && onNavigateToGuide("ieee")}
+                    className="text-[#17A2B8] cursor-pointer hover:underline hover:text-[#1B7A8F] transition-colors"
+                    title="Klik untuk melihat panduan IEEE C57.104"
+                  >
+                    (IEEE C57.104)
+                  </span>
+                </th>
                 <th className={`text-center ${thClass}`}>TDCG</th>
                 {!selectionMode && (
                   <th className={`text-center ${thClass}`}>Aksi</th>

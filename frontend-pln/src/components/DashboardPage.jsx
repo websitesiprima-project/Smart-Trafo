@@ -87,6 +87,11 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
   const safeLiveData = Array.isArray(liveData) ? liveData : [];
   const [selectedTrafo, setSelectedTrafo] = useState(null);
 
+  // 🔥 DEBUG: Log data yang diterima dashboard
+  useEffect(() => {
+    console.log(`📊 Dashboard menerima ${safeLiveData.length} records dari liveData`);
+  }, [safeLiveData.length]);
+
   const [activeSeries, setActiveSeries] = useState(
     GAS_CONFIG.reduce((acc, gas) => {
       acc[gas.key] = true;
@@ -159,33 +164,27 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       .slice(0, 5);
   }, [safeLiveData]);
 
+  // 🔥 FIXED: Hitung SEMUA records, bukan hanya trafo unik
   const globalStats = useMemo(() => {
     let normal = 0,
       waspada = 0,
       kritis = 0,
-      totalGas = 0,
-      count = 0;
+      totalGas = 0;
 
-    const uniqueTrafos = new Map();
-
+    // Hitung semua data riwayat (198 records = 198 data)
     safeLiveData.forEach((d) => {
-      const key = `${normalizeName(d.lokasi_gi)}-${normalizeName(
-        d.nama_trafo,
-      )}`;
-      if (!uniqueTrafos.has(key) || d.id > uniqueTrafos.get(key).id) {
-        uniqueTrafos.set(key, d);
-      }
-    });
-
-    uniqueTrafos.forEach((d) => {
       const s = (d.status_ieee || "").toUpperCase();
       const gas = parseFloat(d.tdcg) || 0;
       totalGas += gas;
-      count++;
+      
       if (s.includes("KRITIS") || s.includes("COND 3")) kritis++;
       else if (s.includes("WASPADA") || s.includes("COND 2")) waspada++;
       else normal++;
     });
+
+    const total = safeLiveData.length;
+    console.log(`📈 Distribusi Kondisi: ${total} data total`);
+    console.log(`   → Normal: ${normal}, Waspada: ${waspada}, Kritis: ${kritis}`);
 
     return {
       pieData: [
@@ -193,8 +192,8 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
         { name: "Waspada", value: waspada },
         { name: "Kritis", value: kritis },
       ],
-      avgTdcg: count > 0 ? (totalGas / count).toFixed(0) : 0,
-      totalAssets: count,
+      avgTdcg: total > 0 ? (totalGas / total).toFixed(0) : 0,
+      totalAssets: total,
     };
   }, [safeLiveData]);
 
