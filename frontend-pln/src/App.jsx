@@ -308,13 +308,15 @@ export default function Home() {
     return userUnit || "Lainnya";
   };
 
-  // --- SUBMIT HANDLER YANG SUDAH DIPERBAIKI ---
+  // --- 🔥 SUBMIT HANDLER YANG SUDAH DIPERBAIKI (UPDATED) 🔥 ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.lokasi_gi || !formData.nama_trafo)
-      return toast.error("Isi Lokasi & Trafo!");
 
-    // 🔥 VALIDASI ULTG: Cek apakah user berhak mengisi GI ini
+    // 1. Validasi Input Dasar
+    if (!formData.lokasi_gi || !formData.nama_trafo)
+      return toast.error("Harap isi Lokasi GI & Nama Trafo!");
+
+    // 2. Validasi Hak Akses (ULTG Mapping)
     if (userRole !== "super_admin" && userUnit) {
       const MAPPING = findUnitByGI.__MAPPING || {
         Lopana: [
@@ -369,19 +371,20 @@ export default function Home() {
       const isAllowed = allowedGIs.some(
         (allowed) =>
           inputGI.toLowerCase().includes(allowed.toLowerCase()) ||
-          allowed.toLowerCase().includes(inputGI.toLowerCase())
+          allowed.toLowerCase().includes(inputGI.toLowerCase()),
       );
 
       if (!isAllowed) {
         return toast.error(
           `⛔ Akses Ditolak: GI "${inputGI}" bukan bagian dari ULTG ${userUnit}. Hanya Super Admin yang dapat mengisi data ke semua GI.`,
-          { duration: 5000 }
+          { duration: 5000 },
         );
       }
     }
 
     setLoading(true);
     try {
+      // 3. Kirim Data ke AI untuk Prediksi
       const payload = { ...formData };
 
       const res = await fetch(`${API_URL}/predict`, {
@@ -389,29 +392,57 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Gagal koneksi AI");
-      const resultData = await res.json();
-      setResult(resultData);
 
+      if (!res.ok) throw new Error("Gagal terhubung ke AI Service");
+
+      const resultData = await res.json();
+      setResult(resultData); // Tampilkan hasil di layar
+
+      // 4. Persiapan Data untuk Disimpan ke Supabase
+      // Bersihkan data form dari field yang tidak perlu disimpan
+      const { jenis_minyak, key_gas, ...cleanFormData } = formData;
+
+      // Logic Fallback untuk Owner
       let finalOwner = "Lainnya";
       if (userUnit) finalOwner = userUnit;
       else finalOwner = findUnitByGI(formData.lokasi_gi);
 
-      // 🔥 FIX: HAPUS KEY_GAS & JENIS_MINYAK SEBELUM KIRIM
-      const { jenis_minyak, key_gas, ...cleanFormData } = formData;
+      const dataToSave = {
+        ...cleanFormData,
 
-      // Backend sudah menyimpan hasil (termasuk `hasil_ai`/`volty_chat`).
-      // Hindari insert duplikat dari frontend — cukup refresh history.
-      toast.success(`Analisis selesai dan disimpan ke ${finalOwner}`);
-      // Refresh daftar history agar menampilkan record yang baru disimpan oleh backend
+        // --- HASIL AI ---
+        tdcg: resultData.tdcg_value || 0,
+        status_ieee: resultData.ieee_status || "Normal",
+        diagnosa: resultData.rogers_diagnosis || "-",
+        hasil_ai: resultData.volty_chat || resultData.hasil_ai || "-", // Simpan chat Volty
+
+        // --- 🔥 BAGIAN PENTING YANG BARU 🔥 ---
+        diambil_oleh: formData.diambil_oleh, // Nama Petugas (Input Manual)
+        email_user: session?.user?.email, // Email Login (Agar tidak NULL)
+
+        // Data Tambahan
+        ultg_pemilik: finalOwner,
+        created_at: new Date().toISOString(),
+      };
+
+      // 5. Eksekusi Simpan ke Tabel 'riwayat_uji'
+      // Kita lakukan insert manual di sini untuk menjamin data email_user masuk
+      const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
+
+      if (error) throw error;
+
+      toast.success(`Data berhasil disimpan untuk ${finalOwner}`);
+
+      // Refresh Data Riwayat
       if (typeof fetchHistory === "function") await fetchHistory();
     } catch (err) {
-      console.error(err);
-      toast.error(err.message);
+      console.error("Error submit:", err);
+      toast.error("Gagal menyimpan: " + err.message);
     } finally {
       setLoading(false);
     }
   };
+  // --- END HANDLER ---
 
   const navigateTo = (page, options = {}) => {
     setActivePage(page);
@@ -698,7 +729,9 @@ export default function Home() {
                   onDeleteAll={handleDeleteAllHistory}
                   userRole={userRole}
                   userUnit={userUnit}
-                  onNavigateToGuide={(tab) => navigateTo("guide", { guideTab: tab })}
+                  onNavigateToGuide={(tab) =>
+                    navigateTo("guide", { guideTab: tab })
+                  }
                 />
               </PageTransition>
             )}
