@@ -2,14 +2,27 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 // Fungsi untuk menentukan kondisi dari status IEEE
+// PERBAIKAN: Prioritaskan status IEEE yang sudah ada, bukan hanya cek C2H2
 const getKondisi = (status, data) => {
   if (!status) return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
-  if (status.includes("KRITIS") || status.includes("Kritis") || status.includes("Cond 3") || status.includes("Condition 3") || (data?.c2h2 && data.c2h2 > 1)) {
+  
+  // Prioritas 1: Cek status IEEE terlebih dahulu (status yang sudah dianalisis)
+  if (status.includes("KRITIS") || status.includes("Kritis") || status.includes("Cond 3") || status.includes("Condition 3")) {
     return { kondisi: "3", text: "Bahaya", color: [220, 50, 50] };
   }
   if (status.includes("Waspada") || status.includes("Cond 2") || status.includes("Condition 2")) {
     return { kondisi: "2", text: "Waspada", color: [255, 165, 0] };
   }
+  if (status.includes("Normal") || status.includes("Cond 1") || status.includes("Condition 1")) {
+    return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
+  }
+  
+  // Prioritas 2: Jika status tidak jelas, gunakan fallback berdasarkan gas (untuk kasus tanpa status IEEE)
+  // C2H2 > 5 ppm menunjukkan arcing serius (berdasarkan IEEE C57.104-2019)
+  if (data?.c2h2 && parseFloat(data.c2h2) > 5) {
+    return { kondisi: "3", text: "Bahaya", color: [220, 50, 50] };
+  }
+  
   return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
 };
 
