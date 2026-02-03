@@ -22,7 +22,7 @@ import LoginPage from "./components/LoginPage";
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
-import VoltyMascot from "./components/VoltyMascot"; // 🔥 IMPORT MASCOT VOLTY
+import VoltyMascot from "./components/VoltyMascot";
 import ThemeToggle from "./components/ThemeToggle";
 
 const DashboardPage = lazy(() => import("./components/DashboardPage"));
@@ -35,10 +35,57 @@ const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
 const API_URL = "http://127.0.0.1:8000";
 
-// 🔥 LOGIKA MAPPING AKUN
+// 🔥 PERBAIKAN 1: PINDAHKAN MAPPING KE SINI (GLOBAL) AGAR TIDAK DUPLIKAT
+const UNIT_GI_MAPPING = {
+  Lopana: [
+    "GI Lopana",
+    "GI Amurang",
+    "GI Kawangkoan",
+    "PLTP Lahendong",
+    "GI Tomohon",
+    "GI Tasikria",
+    "GI Tonsealama",
+    "GI Sawangan",
+    "PLTA Tanggari",
+  ],
+  Sawangan: [
+    "GI Teling",
+    "GIS Teling",
+    "GIS Sario",
+    "GI Bitung",
+    "GI Likupang",
+    "GI Paniki",
+    "GI Tanjung Merah",
+    "GI Ranomuut",
+    "GI Kema",
+    "GI Pandu",
+    "GI MSM",
+  ],
+  Kotamobagu: [
+    "GI Kotamobagu",
+    "GI Lolak",
+    "GI Otam",
+    "PLTU SULUT",
+    "GI Tutuyan",
+    "GI Molibagu",
+  ],
+  Gorontalo: [
+    "GI Gorontalo",
+    "GI Isimu",
+    "GI Marisa",
+    "GI Botupingge",
+    "GI Kwandang",
+    "GI Boroko",
+    "GI Anggrek",
+    "GI Tolinggula",
+    "GI Tilamuta",
+    "PLTG Maleo",
+    "PT BJA",
+  ],
+};
+
 const getAccessByEmail = (email) => {
   const normalizedEmail = email?.toLowerCase().trim() || "";
-
   if (normalizedEmail === "superadminupt@gmail.com")
     return { role: "super_admin", unit: null };
   if (normalizedEmail === "ultgsawangan@gmail.com")
@@ -49,24 +96,17 @@ const getAccessByEmail = (email) => {
     return { role: "admin_unit", unit: "Kotamobagu" };
   if (normalizedEmail === "ultggorontalo@gmail.com")
     return { role: "admin_unit", unit: "Gorontalo" };
-
   return { role: "viewer", unit: null };
 };
 
 export default function Home() {
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
-
-  // State User
   const [userRole, setUserRole] = useState(null);
   const [userUnit, setUserUnit] = useState(null);
-
-  // State UI
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
-
-  // 🔥 STATE BARU: STATUS LOGOUT
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -79,9 +119,8 @@ export default function Home() {
   });
   const [activeField, setActiveField] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [guideTab, setGuideTab] = useState("ieee"); // Tab aktif di halaman panduan
+  const [guideTab, setGuideTab] = useState("ieee");
 
-  // Persist settings
   useEffect(() => {
     localStorage.setItem("pln-smart-trafo-activepage", activePage);
   }, [activePage]);
@@ -92,7 +131,6 @@ export default function Home() {
     );
   }, [isDarkMode]);
 
-  // Data State
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -119,22 +157,19 @@ export default function Home() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // --- AUTH LOGIC ---
   useEffect(() => {
     let mounted = true;
     const initAuth = async () => {
       const {
         data: { session: currentSession },
       } = await supabase.auth.getSession();
-      if (mounted) {
-        if (currentSession) {
-          setSession(currentSession);
-          const access = getAccessByEmail(currentSession.user.email);
-          setUserRole(access.role);
-          setUserUnit(access.unit);
-        }
-        setAuthChecking(false);
+      if (mounted && currentSession) {
+        setSession(currentSession);
+        const access = getAccessByEmail(currentSession.user.email);
+        setUserRole(access.role);
+        setUserUnit(access.unit);
       }
+      if (mounted) setAuthChecking(false);
     };
     initAuth();
     const {
@@ -159,17 +194,14 @@ export default function Home() {
     };
   }, []);
 
-  // --- 🔥 CORE: DATA SYNC (REALTIME) ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      // 🔥 FIX: Naikkan limit agar semua data riwayat terambil (dashboard & distribusi kondisi akurat)
       let query = supabase
         .from("riwayat_uji")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(2000);
-
       const { data, error } = await query;
       if (error) throw error;
       setHistoryData(data || []);
@@ -183,11 +215,8 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (session?.user) {
-      fetchHistory();
-    }
+    if (session?.user) fetchHistory();
   }, [session]);
-
   useEffect(() => {
     if (!session?.user) return;
     const channel = supabase
@@ -195,10 +224,7 @@ export default function Home() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "riwayat_uji" },
-        (payload) => {
-          console.log("Database Berubah!", payload);
-          fetchHistory();
-        },
+        () => fetchHistory(),
       )
       .subscribe();
     return () => {
@@ -206,15 +232,10 @@ export default function Home() {
     };
   }, [session]);
 
-  // --- 🔥 MODIFIKASI HANDLER LOGOUT ---
   const handleLogout = async () => {
     setShowLogoutModal(false);
-    setIsLoggingOut(true); // 1. Aktifkan Layar Loading Volty
-
-    // 2. Tunggu 3 Detik
+    setIsLoggingOut(true);
     await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    // 3. Proses Logout Asli
     await supabase.auth.signOut();
     localStorage.removeItem("pln-smart-trafo-auth");
     setSession(null);
@@ -222,8 +243,7 @@ export default function Home() {
     setUserUnit(null);
     setShowLogin(false);
     setActivePage("dashboard");
-
-    setIsLoggingOut(false); // Matikan loading
+    setIsLoggingOut(false);
     toast.success("Berhasil keluar.");
   };
 
@@ -252,131 +272,35 @@ export default function Home() {
     });
   };
 
+  // 🔥 PERBAIKAN 2: GUNAKAN MAPPING GLOBAL
   const findUnitByGI = (giName) => {
-    const MAPPING = {
-      Lopana: [
-        "GI Lopana",
-        "GI Amurang",
-        "GI Kawangkoan",
-        "PLTP Lahendong",
-        "GI Tomohon",
-        "GI Tasikria",
-        "GI Tonsealama",
-        "GI Sawangan",
-        "PLTA Tanggari",
-      ],
-      Sawangan: [
-        "GI Teling",
-        "GIS Teling",
-        "GIS Sario",
-        "GI Bitung",
-        "GI Likupang",
-        "GI Paniki",
-        "GI Tanjung Merah",
-        "GI Ranomuut",
-        "GI Kema",
-        "GI Pandu",
-        "GI MSM",
-      ],
-      Kotamobagu: [
-        "GI Kotamobagu",
-        "GI Lolak",
-        "GI Otam",
-        "PLTU SULUT",
-        "GI Tutuyan",
-        "GI Molibagu",
-      ],
-      Gorontalo: [
-        "GI Gorontalo",
-        "GI Isimu",
-        "GI Marisa",
-        "GI Botupingge",
-        "GI Kwandang",
-        "GI Boroko",
-        "GI Anggrek",
-        "GI Tolinggula",
-        "GI Tilamuta",
-        "PLTG Maleo",
-        "PT BJA",
-      ],
-    };
     const search = (giName || "").toUpperCase();
-    for (const [unit, list] of Object.entries(MAPPING)) {
+    for (const [unit, list] of Object.entries(UNIT_GI_MAPPING)) {
       if (list.some((g) => search.includes(g.toUpperCase().replace("GI ", ""))))
         return unit;
     }
     return userUnit || "Lainnya";
   };
 
-  // --- 🔥 SUBMIT HANDLER YANG SUDAH DIPERBAIKI (UPDATED) 🔥 ---
+  // 🔥 PERBAIKAN 3: HANDLE SUBMIT YANG LEBIH AMAN (MENCEGAH DOUBLE CLICK)
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return; // <-- CEGAH KLIK GANDA SAAT LOADING
 
-    // 1. Validasi Input Dasar
     if (!formData.lokasi_gi || !formData.nama_trafo)
       return toast.error("Harap isi Lokasi GI & Nama Trafo!");
 
-    // 2. Validasi Hak Akses (ULTG Mapping)
     if (userRole !== "super_admin" && userUnit) {
-      const MAPPING = findUnitByGI.__MAPPING || {
-        Lopana: [
-          "GI Lopana",
-          "GI Amurang",
-          "GI Kawangkoan",
-          "PLTP Lahendong",
-          "GI Tomohon",
-          "GI Tasikria",
-          "GI Tonsealama",
-          "GI Sawangan",
-          "PLTA Tanggari",
-        ],
-        Sawangan: [
-          "GI Teling",
-          "GIS Teling",
-          "GIS Sario",
-          "GI Bitung",
-          "GI Likupang",
-          "GI Paniki",
-          "GI Tanjung Merah",
-          "GI Ranomuut",
-          "GI Kema",
-          "GI Pandu",
-          "GI MSM",
-        ],
-        Kotamobagu: [
-          "GI Kotamobagu",
-          "GI Lolak",
-          "GI Otam",
-          "PLTU SULUT",
-          "GI Tutuyan",
-          "GI Molibagu",
-        ],
-        Gorontalo: [
-          "GI Gorontalo",
-          "GI Isimu",
-          "GI Marisa",
-          "GI Botupingge",
-          "GI Kwandang",
-          "GI Boroko",
-          "GI Anggrek",
-          "GI Tolinggula",
-          "GI Tilamuta",
-          "PLTG Maleo",
-          "PT BJA",
-        ],
-      };
-
-      const allowedGIs = MAPPING[userUnit] || [];
+      const allowedGIs = UNIT_GI_MAPPING[userUnit] || []; // <-- PAKAI MAPPING GLOBAL
       const inputGI = (formData.lokasi_gi || "").trim();
       const isAllowed = allowedGIs.some(
         (allowed) =>
           inputGI.toLowerCase().includes(allowed.toLowerCase()) ||
           allowed.toLowerCase().includes(inputGI.toLowerCase()),
       );
-
       if (!isAllowed) {
         return toast.error(
-          `⛔ Akses Ditolak: GI "${inputGI}" bukan bagian dari ULTG ${userUnit}. Hanya Super Admin yang dapat mengisi data ke semua GI.`,
+          `⛔ Akses Ditolak: GI "${inputGI}" bukan bagian dari ULTG ${userUnit}.`,
           { duration: 5000 },
         );
       }
@@ -384,9 +308,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      // 3. Kirim Data ke AI untuk Prediksi
       const payload = { ...formData };
-
       const res = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -394,46 +316,29 @@ export default function Home() {
       });
 
       if (!res.ok) throw new Error("Gagal terhubung ke AI Service");
-
       const resultData = await res.json();
-      setResult(resultData); // Tampilkan hasil di layar
+      setResult(resultData);
 
-      // 4. Persiapan Data untuk Disimpan ke Supabase
-      // Bersihkan data form dari field yang tidak perlu disimpan
       const { jenis_minyak, key_gas, ...cleanFormData } = formData;
-
-      // Logic Fallback untuk Owner
-      let finalOwner = "Lainnya";
-      if (userUnit) finalOwner = userUnit;
-      else finalOwner = findUnitByGI(formData.lokasi_gi);
+      let finalOwner = userUnit ? userUnit : findUnitByGI(formData.lokasi_gi);
 
       const dataToSave = {
         ...cleanFormData,
-
-        // --- HASIL AI ---
         tdcg: resultData.tdcg_value || 0,
         status_ieee: resultData.ieee_status || "Normal",
         diagnosa: resultData.rogers_diagnosis || "-",
-        hasil_ai: resultData.volty_chat || resultData.hasil_ai || "-", // Simpan chat Volty
-
-        // --- 🔥 BAGIAN PENTING YANG BARU 🔥 ---
-        diambil_oleh: formData.diambil_oleh, // Nama Petugas (Input Manual)
-        email_user: session?.user?.email, // Email Login (Agar tidak NULL)
-
-        // Data Tambahan
+        hasil_ai: resultData.volty_chat || resultData.hasil_ai || "-",
+        diambil_oleh: formData.diambil_oleh,
+        email_user: session?.user?.email,
         ultg_pemilik: finalOwner,
         created_at: new Date().toISOString(),
       };
 
-      // 5. Eksekusi Simpan ke Tabel 'riwayat_uji'
-      // Kita lakukan insert manual di sini untuk menjamin data email_user masuk
+      // 🔥 PASTIKAN FILE PYTHON (MAIN.PY) TIDAK MELAKUKAN INSERT JUGA!
       const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
-
       if (error) throw error;
 
       toast.success(`Data berhasil disimpan untuk ${finalOwner}`);
-
-      // Refresh Data Riwayat
       if (typeof fetchHistory === "function") await fetchHistory();
     } catch (err) {
       console.error("Error submit:", err);
@@ -442,27 +347,21 @@ export default function Home() {
       setLoading(false);
     }
   };
-  // --- END HANDLER ---
 
   const navigateTo = (page, options = {}) => {
     setActivePage(page);
     setIsSidebarOpen(false);
-    // Jika ada guideTab option, set tab yang aktif
-    if (options.guideTab) {
-      setGuideTab(options.guideTab);
-    }
+    if (options.guideTab) setGuideTab(options.guideTab);
   };
 
   if (authChecking) return <LoadingScreen />;
 
-  // 🔥 TAMPILAN LOADING LOGOUT (MENGGUNAKAN VoltyMascot.jsx)
   if (isLoggingOut) {
     return (
       <div
         className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center transition-all duration-500 ${isDarkMode ? "bg-[#0f172a]" : "bg-white"}`}
       >
         <div className="text-center animate-bounce mb-6">
-          {/* 🔥 GUNAKAN KOMPONEN VOLTY DI SINI */}
           <div className="w-40 h-40 mx-auto">
             <VoltyMascot />
           </div>
@@ -511,7 +410,6 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* MODALS */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
@@ -567,7 +465,6 @@ export default function Home() {
         onClose={() => setActiveField(null)}
       />
 
-      {/* HEADER */}
       <header
         className={`fixed top-0 z-30 w-full h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${isDarkMode ? "bg-slate-900/80" : "bg-white/80"}`}
       >
@@ -597,7 +494,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* SIDEBAR */}
       <div
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}
         onClick={() => setIsSidebarOpen(false)}
@@ -651,7 +547,6 @@ export default function Home() {
             onClick={() => navigateTo("guide")}
             isDarkMode={isDarkMode}
           />
-
           {userRole === "super_admin" && (
             <div className="pt-4 mt-4 border-t border-gray-500/20">
               <p className="px-4 text-[10px] font-bold uppercase opacity-50 mb-2 tracking-widest">
@@ -678,7 +573,6 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* CONTENT */}
       <main
         className={`pt-20 pb-10 w-full min-h-screen transition-all duration-300 ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"}`}
       >

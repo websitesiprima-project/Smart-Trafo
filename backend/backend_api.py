@@ -131,7 +131,6 @@ def analisis_ratio_co2_co(data: TrafoInput):
 def analisis_duval_triangle_1(data: TrafoInput):
     """
     Analisis Duval Triangle 1 sesuai IEC 60599 & IEEE C57.104-2019
-    PENTING: Mempertimbangkan nilai ABSOLUT dan PERSENTASE untuk diagnosis akurat
     """
     total = data.ch4 + data.c2h4 + data.c2h2
     if total == 0:
@@ -143,63 +142,41 @@ def analisis_duval_triangle_1(data: TrafoInput):
 
     diagnosa = "Tidak Teridentifikasi"
 
-    # ================================================================
-    # ZONA DISCHARGE (D1, D2) - C2H2 harus signifikan
-    # ================================================================
-    # D1: Low Energy Discharge (Sparking) - C2H2 > 13%
+    # ZONA DISCHARGE (D1, D2)
     if pct_c2h2 > 13 and pct_c2h4 < 23:
         diagnosa = "D1: Discharge of Low Energy (Sparking)"
-    # D2: High Energy Discharge (Arcing) - C2H2 > 13% dan C2H4 tinggi
     elif pct_c2h2 > 13 and pct_c2h4 >= 23:
         diagnosa = "D2: Discharge of High Energy (Arcing)"
     
-    # ================================================================
-    # ZONA DT (Campuran Thermal + Electrical)
-    # ================================================================
+    # ZONA DT
     elif pct_c2h2 >= 4 and pct_c2h2 <= 13 and pct_c2h4 >= 10:
         diagnosa = "DT: Campuran Thermal & Electrical"
     
-    # ================================================================
-    # ZONA THERMAL (T1, T2, T3) - C2H2 harus rendah (<4%)
-    # PENTING: T3 membutuhkan C2H4 ABSOLUT tinggi, bukan hanya persentase!
-    # ================================================================
-    # T3: Thermal > 700°C - HARUS C2H4 absolut > 100 ppm DAN persentase dominan
+    # ZONA THERMAL (T1, T2, T3)
     elif pct_c2h4 >= 50 and pct_c2h2 < 4 and data.c2h4 > 100:
         diagnosa = "T3: Thermal Fault > 700°C"
     
-    # T2: Thermal 300-700°C - C2H4 dominan tapi nilai absolut tidak ekstrem
     elif pct_c2h4 >= 50 and pct_c2h2 < 4 and data.c2h4 <= 100:
-        # Jika C2H4 absolut rendah (<100), ini T2 bukan T3
         diagnosa = "T2: Thermal Fault 300-700°C"
     elif pct_c2h4 >= 20 and pct_c2h4 < 50 and pct_c2h2 < 4:
         diagnosa = "T2: Thermal Fault 300-700°C"
     
-    # T1: Thermal < 300°C - CH4 dominan
     elif pct_ch4 >= 50 and pct_c2h4 < 20 and pct_c2h2 < 4:
         diagnosa = "T1: Thermal Fault < 300°C"
     
-    # T1-T2 transisi: Thermal Ringan
     elif pct_c2h4 >= 10 and pct_c2h4 < 20 and pct_c2h2 < 4:
         diagnosa = "T1-T2: Thermal Fault Ringan"
     
-    # ================================================================
-    # ZONA PD (Partial Discharge) - CH4 sangat dominan
-    # ================================================================
+    # ZONA PD
     elif pct_ch4 >= 98 and pct_c2h2 < 2 and pct_c2h4 < 2:
         diagnosa = "PD: Partial Discharge"
     
-    # ================================================================
-    # DEFAULT: Evaluasi berdasarkan gas dominan
-    # ================================================================
+    # DEFAULT
     else:
         if pct_c2h4 > pct_ch4 and pct_c2h4 > pct_c2h2:
-            # C2H4 dominan tapi nilai absolut rendah = thermal ringan-sedang
-            if data.c2h4 < 50:
-                diagnosa = "T1-T2: Thermal Fault Ringan"
-            elif data.c2h4 < 100:
-                diagnosa = "T2: Thermal Fault 300-700°C"
-            else:
-                diagnosa = "T2-T3: Thermal Fault Sedang-Berat"
+            if data.c2h4 < 50: diagnosa = "T1-T2: Thermal Fault Ringan"
+            elif data.c2h4 < 100: diagnosa = "T2: Thermal Fault 300-700°C"
+            else: diagnosa = "T2-T3: Thermal Fault Sedang-Berat"
         elif pct_ch4 > pct_c2h4:
             diagnosa = "T1: Thermal Fault < 300°C"
         else:
@@ -210,10 +187,7 @@ def analisis_duval_triangle_1(data: TrafoInput):
 def analisis_ieee_2019(data: TrafoInput):
     """
     Analisis berdasarkan IEEE C57.104-2019 Table 1
-    Menggunakan TDCG sebagai indikator utama + evaluasi gas individual
     """
-    # Batas IEEE C57.104-2019 (Typical Values - Mineral Oil)
-    # Cond 1: Normal | Cond 2: Waspada | Cond 3: Kritis
     LIMITS_COND1 = {'h2': 100, 'ch4': 120, 'c2h6': 65, 'c2h4': 50, 'c2h2': 1, 'co': 350}
     LIMITS_COND2 = {'h2': 200, 'ch4': 400, 'c2h6': 100, 'c2h4': 100, 'c2h2': 2, 'co': 570}
     LIMITS_COND3 = {'h2': 300, 'ch4': 600, 'c2h6': 150, 'c2h4': 200, 'c2h2': 9, 'co': 1400}
@@ -222,10 +196,8 @@ def analisis_ieee_2019(data: TrafoInput):
     diagnosa = []
     status = 1
     
-    # Hitung TDCG (Total Dissolved Combustible Gas)
     tdcg = data.h2 + data.ch4 + data.c2h6 + data.c2h4 + data.c2h2 + data.co
     
-    # Evaluasi TDCG sebagai indikator utama IEEE
     if tdcg > TDCG_LIMITS['cond3']:
         status = 3
         diagnosa.append(f"TDCG Sangat Tinggi ({int(tdcg)} ppm)")
@@ -236,7 +208,6 @@ def analisis_ieee_2019(data: TrafoInput):
         status = max(status, 2)
         diagnosa.append(f"TDCG Meningkat ({int(tdcg)} ppm)")
     
-    # Evaluasi gas individual - hanya tandai jika melewati batas
     if data.h2 > LIMITS_COND2['h2']: 
         diagnosa.append("H2 Tinggi")
         status = max(status, 2)
@@ -262,19 +233,16 @@ def analisis_ieee_2019(data: TrafoInput):
         diagnosa.append("CO Meningkat (Penuaan Kertas)")
         status = max(status, 2)
     
-    # C2H2 - Evaluasi dengan threshold yang benar
-    # PENTING: C2H2 1-9 ppm = monitoring, BUKAN langsung kritis
-    if data.c2h2 > LIMITS_COND3['c2h2']:  # > 9 ppm
+    if data.c2h2 > LIMITS_COND3['c2h2']: 
         diagnosa.append(f"C2H2 Kritis ({data.c2h2} ppm) - Indikasi Arcing Aktif")
         status = 3
-    elif data.c2h2 > LIMITS_COND2['c2h2']:  # > 2 ppm tapi <= 9 ppm
+    elif data.c2h2 > LIMITS_COND2['c2h2']: 
         diagnosa.append(f"C2H2 Terdeteksi ({data.c2h2} ppm)")
         status = max(status, 2)
-    elif data.c2h2 > LIMITS_COND1['c2h2']:  # > 1 ppm tapi <= 2 ppm
+    elif data.c2h2 > LIMITS_COND1['c2h2']: 
         diagnosa.append(f"C2H2 Trace ({data.c2h2} ppm)")
         status = max(status, 2)
     
-    # Kondisi Kritis HANYA jika multiple gas sangat tinggi
     if data.c2h4 > LIMITS_COND3['c2h4'] or data.ch4 > LIMITS_COND3['ch4']: 
         status = 3
     
@@ -284,7 +252,6 @@ def analisis_ieee_2019(data: TrafoInput):
 def analisis_rogers_ratio(data: TrafoInput):
     """
     Analisis Rogers Ratio Method
-    CATATAN: Jika salah satu gas pembagi = 0, rasio tidak valid
     """
     h2 = data.h2
     ch4 = data.ch4
@@ -292,24 +259,20 @@ def analisis_rogers_ratio(data: TrafoInput):
     c2h4 = data.c2h4
     c2h2 = data.c2h2
 
-    # Hitung rasio - handle division by zero
-    r2 = c2h2 / c2h4 if c2h4 > 0 else -1  # -1 = invalid
+    r2 = c2h2 / c2h4 if c2h4 > 0 else -1 
     r1 = ch4 / h2 if h2 > 0 else -1
     r5 = c2h4 / c2h6 if c2h6 > 0 else -1
 
     diagnosis = "Tidak Terdefinisi"
     
-    # Jika ada rasio yang tidak valid (pembagi = 0)
     invalid_ratios = []
     if r1 < 0: invalid_ratios.append("R1 (H2=0)")
     if r2 < 0: invalid_ratios.append("R2 (C2H4=0)")
     if r5 < 0: invalid_ratios.append("R5 (C2H6=0)")
     
     if invalid_ratios:
-        # Tidak bisa melakukan analisis Rogers yang valid
         diagnosis = f"Rasio Tidak Valid ({', '.join(invalid_ratios)})"
     else:
-        # Analisis Rogers standar
         if r2 < 0.1 and 0.1 <= r1 <= 1.0 and r5 < 1.0:
             diagnosis = "Normal"
         elif r2 < 0.1 and r1 < 0.1 and r5 < 1.0:
@@ -325,7 +288,6 @@ def analisis_rogers_ratio(data: TrafoInput):
         else:
             diagnosis = "Tidak Terdefinisi (Fault Ringan/Awal)"
 
-    # Format output
     r1_str = f"{r1:.2f}" if r1 >= 0 else "N/A"
     r2_str = f"{r2:.2f}" if r2 >= 0 else "N/A"
     r5_str = f"{r5:.2f}" if r5 >= 0 else "N/A"
@@ -356,11 +318,10 @@ def add_trafo(data: TrafoBaruInput):
     try:
         user_check = supabase.table("profiles").select("role").eq("email", data.user_email).execute()
         
-        # 🔥 FIX TYPE CHECKING & PYLANCE SAFETY
         current_role = "user"
         if user_check.data and isinstance(user_check.data, list) and len(user_check.data) > 0:
-            user_data = user_check.data[0] # Ambil item pertama
-            if isinstance(user_data, dict): # Pastikan item adalah Dictionary
+            user_data = user_check.data[0] 
+            if isinstance(user_data, dict): 
                 current_role = user_data.get("role", "user")
              
         if current_role != 'super_admin':
@@ -396,7 +357,6 @@ def predict(data: TrafoInput):
     ml_res = "ML Not Active"
     if model_trafo:
         try:
-            # Urutan fitur: [H2, CH4, C2H2, C2H4, C2H6]
             features = np.array([[data.h2, data.ch4, data.c2h2, data.c2h4, data.c2h6]])
             ml_res = model_trafo.predict(features)[0]
         except Exception as e:
@@ -408,41 +368,11 @@ def predict(data: TrafoInput):
     if groq_client:
         system_prompt = """
 Anda adalah VOLTY, Spesialis Senior Analisis DGA Transformator untuk PLN UPT Manado.
-
 === ATURAN ANALISIS WAJIB ===
 1. Gunakan standar IEEE C57.104-2019 sebagai acuan utama
 2. JANGAN membuat klaim berlebihan yang tidak didukung data
 3. Perhatikan nilai ABSOLUT gas (ppm), bukan hanya persentase Duval
 4. Analisis harus PROPORSIONAL dengan nilai gas yang sebenarnya
-
-=== INTERPRETASI NILAI GAS ===
-Gas RENDAH (aman):
-- H2 < 100 ppm, CH4 < 120 ppm, C2H4 < 50 ppm, C2H2 < 2 ppm, CO < 350 ppm
-
-Gas MENINGKAT (waspada):
-- H2: 100-200, CH4: 120-400, C2H4: 50-100, C2H2: 2-9, CO: 350-570
-
-Gas TINGGI (perlu perhatian):
-- H2 > 200, CH4 > 400, C2H4 > 100, C2H2 > 9, CO > 570
-
-=== ATURAN ZONA DUVAL ===
-JANGAN sebut "Thermal Fault >700°C" (T3) KECUALI:
-- C2H4 absolut > 100 ppm DAN
-- C2H4 persentase > 50%
-
-Jika C2H4 hanya 20 ppm dengan persentase tinggi (karena gas lain lebih rendah):
-- Ini BUKAN T3, melainkan T1-T2 (thermal ringan-sedang)
-
-=== ATURAN C2H2 ===
-- C2H2 < 2 ppm = SANGAT RENDAH, bukan indikasi arcing
-- C2H2 2-9 ppm = perlu monitoring, bukan kritis
-- C2H2 > 9 ppm = indikasi arcing aktif
-
-=== ATURAN CO & CO2 ===
-CO dan CO2 tinggi menunjukkan DEGRADASI SELULOSA (penuaan isolasi kertas)
-- Ini BERBEDA dengan thermal fault pada minyak
-- Bukan gangguan listrik, tapi penuaan alami
-
 === FORMAT JAWABAN ===
 Bahasa Indonesia, Markdown singkat:
 ### Diagnosa Singkat
@@ -450,14 +380,12 @@ Bahasa Indonesia, Markdown singkat:
 ### Rekomendasi Aksi
 """
         
-        # Evaluasi level tiap gas untuk konteks AI
         h2_level = "rendah" if data.h2 < 100 else "meningkat" if data.h2 < 200 else "tinggi"
         ch4_level = "rendah" if data.ch4 < 120 else "meningkat" if data.ch4 < 400 else "tinggi"
         c2h2_level = "sangat rendah" if data.c2h2 < 2 else "rendah" if data.c2h2 < 5 else "sedang" if data.c2h2 < 10 else "tinggi"
         c2h4_level = "rendah" if data.c2h4 < 50 else "sedang" if data.c2h4 < 100 else "tinggi"
         co_level = "normal" if data.co < 350 else "meningkat" if data.co < 570 else "tinggi"
         
-        # Info Duval Pentagon
         total_duval = data.ch4 + data.c2h4 + data.c2h2
         duval_context = ""
         if total_duval > 0:
@@ -472,7 +400,6 @@ ANALISIS DUVAL:
         
         user_prompt = f"""
 DATA DGA TRANSFORMATOR:
-
 | Gas | Nilai (ppm) | Level |
 |-----|-------------|-------|
 | H2 | {data.h2} | {h2_level} |
@@ -508,41 +435,9 @@ Berikan analisis yang AKURAT dan PROPORSIONAL.
         except Exception as e:
             volty_chat = f"Gagal memuat analisis AI: {str(e)}"
 
-    # D. Simpan ke Database (Riwayat & Audit)
-    if db_active and supabase:
-        try:
-            # 1. Cari Unit Pemilik berdasarkan email petugas (diambil_oleh)
-            ultg_user = "Unknown"
-            if data.diambil_oleh:
-                user_profile = supabase.table("profiles").select("unit_ultg").eq("email", data.diambil_oleh).execute()
-                
-                # 🔥 FIX TYPE CHECKING & PYLANCE SAFETY
-                if user_profile.data and isinstance(user_profile.data, list) and len(user_profile.data) > 0:
-                    profile_data = user_profile.data[0]
-                    if isinstance(profile_data, dict):
-                        ultg_user = profile_data.get("unit_ultg", "Unknown")
-
-            # 2. Simpan Riwayat
-            record = data.model_dump()
-            record.update({
-                "tdcg": tdcg,
-                "status_ieee": ieee_status,
-                "diagnosa": f"Duval: {duval_res} | Rogers: {rogers_res}",
-                "hasil_ai": volty_chat,
-                "ultg_pemilik": ultg_user # Penanda kepemilikan data
-            })
-            supabase.table("riwayat_uji").insert(record).execute()
-
-            # 3. Simpan Audit Log
-            if data.diambil_oleh:
-                supabase.table("audit_logs").insert({
-                    "user_email": data.diambil_oleh,
-                    "action": "UJI_DGA",
-                    "details": f"Uji {data.nama_trafo} (Hasil: {ieee_status})"
-                }).execute()
-
-        except Exception as e:
-            print(f"DB Error saat menyimpan history: {e}")
+    # 🔥🔥 FIX UTAMA: SAYA MENGHAPUS BAGIAN D (PENYIMPANAN KE DB) 🔥🔥
+    # Karena Frontend (React) sudah menyimpan data, Backend tidak perlu menyimpan lagi.
+    # Kode insert ke 'riwayat_uji' dan 'audit_logs' DIHAPUS dari sini.
 
     # E. Return Response ke Frontend
     return {
@@ -621,7 +516,6 @@ def delete_asset(asset_id: int, user_email: str):
             return {"status": "Gagal", "msg": "Hanya Super Admin yang boleh menghapus aset master!"}
 
         # 2. Ambil data sebelum dihapus (untuk log)
-        # 🔥 FIX PYLANCE: Pastikan tipe data sebelum akses index
         nama_aset = "Unknown Asset"
         asset_data = supabase.table("assets_trafo").select("*").eq("id", asset_id).execute()
         
