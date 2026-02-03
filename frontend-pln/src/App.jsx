@@ -24,6 +24,8 @@ import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import VoltyMascot from "./components/VoltyMascot";
 import ThemeToggle from "./components/ThemeToggle";
+// 🔥 IMPORT HOOK AUTO LOGOUT
+import useAutoLogout from "./hooks/useAutoLogout";
 
 const DashboardPage = lazy(() => import("./components/DashboardPage"));
 const InputFormPage = lazy(() => import("./components/InputFormPage"));
@@ -35,7 +37,7 @@ const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
 const API_URL = "http://127.0.0.1:8000";
 
-// 🔥 PERBAIKAN 1: PINDAHKAN MAPPING KE SINI (GLOBAL) AGAR TIDAK DUPLIKAT
+// 🔥 MAPPING GLOBAL (Agar tidak duplikat & konsisten)
 const UNIT_GI_MAPPING = {
   Lopana: [
     "GI Lopana",
@@ -102,8 +104,12 @@ const getAccessByEmail = (email) => {
 export default function Home() {
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
+
+  // State User
   const [userRole, setUserRole] = useState(null);
   const [userUnit, setUserUnit] = useState(null);
+
+  // State UI
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
@@ -121,6 +127,7 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [guideTab, setGuideTab] = useState("ieee");
 
+  // Persist settings
   useEffect(() => {
     localStorage.setItem("pln-smart-trafo-activepage", activePage);
   }, [activePage]);
@@ -131,6 +138,7 @@ export default function Home() {
     );
   }, [isDarkMode]);
 
+  // Data State
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -157,6 +165,7 @@ export default function Home() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // --- AUTH LOGIC ---
   useEffect(() => {
     let mounted = true;
     const initAuth = async () => {
@@ -194,6 +203,7 @@ export default function Home() {
     };
   }, []);
 
+  // --- SYNC DATA ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -217,6 +227,7 @@ export default function Home() {
   useEffect(() => {
     if (session?.user) fetchHistory();
   }, [session]);
+
   useEffect(() => {
     if (!session?.user) return;
     const channel = supabase
@@ -232,10 +243,11 @@ export default function Home() {
     };
   }, [session]);
 
+  // --- LOGOUT HANDLER ---
   const handleLogout = async () => {
     setShowLogoutModal(false);
     setIsLoggingOut(true);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // Animasi 3 detik
     await supabase.auth.signOut();
     localStorage.removeItem("pln-smart-trafo-auth");
     setSession(null);
@@ -247,6 +259,15 @@ export default function Home() {
     toast.success("Berhasil keluar.");
   };
 
+  // 🔥 IMPLEMENTASI AUTO LOGOUT (15 Menit = 900.000 ms) 🔥
+  useAutoLogout(() => {
+    if (session) {
+      toast.warning("Sesi berakhir karena tidak ada aktivitas.");
+      handleLogout();
+    }
+  }, 60000);
+
+  // --- DELETE HISTORY ---
   const handleDeleteAllHistory = () => setShowDeleteAllModal(true);
   const confirmDeleteAll = async () => {
     setLoadingHistory(true);
@@ -272,7 +293,7 @@ export default function Home() {
     });
   };
 
-  // 🔥 PERBAIKAN 2: GUNAKAN MAPPING GLOBAL
+  // --- FIND UNIT (GLOBAL MAPPING) ---
   const findUnitByGI = (giName) => {
     const search = (giName || "").toUpperCase();
     for (const [unit, list] of Object.entries(UNIT_GI_MAPPING)) {
@@ -282,16 +303,16 @@ export default function Home() {
     return userUnit || "Lainnya";
   };
 
-  // 🔥 PERBAIKAN 3: HANDLE SUBMIT YANG LEBIH AMAN (MENCEGAH DOUBLE CLICK)
+  // --- SUBMIT HANDLER (ANTI DOUBLE CLICK) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return; // <-- CEGAH KLIK GANDA SAAT LOADING
+    if (loading) return; // 🔒 Cegah klik ganda
 
     if (!formData.lokasi_gi || !formData.nama_trafo)
       return toast.error("Harap isi Lokasi GI & Nama Trafo!");
 
     if (userRole !== "super_admin" && userUnit) {
-      const allowedGIs = UNIT_GI_MAPPING[userUnit] || []; // <-- PAKAI MAPPING GLOBAL
+      const allowedGIs = UNIT_GI_MAPPING[userUnit] || [];
       const inputGI = (formData.lokasi_gi || "").trim();
       const isAllowed = allowedGIs.some(
         (allowed) =>
@@ -334,7 +355,7 @@ export default function Home() {
         created_at: new Date().toISOString(),
       };
 
-      // 🔥 PASTIKAN FILE PYTHON (MAIN.PY) TIDAK MELAKUKAN INSERT JUGA!
+      // Simpan data (Hanya Frontend yang melakukan ini)
       const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
       if (error) throw error;
 
@@ -354,6 +375,7 @@ export default function Home() {
     if (options.guideTab) setGuideTab(options.guideTab);
   };
 
+  // --- RENDER ---
   if (authChecking) return <LoadingScreen />;
 
   if (isLoggingOut) {
@@ -410,6 +432,7 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
+      {/* MODALS */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
@@ -465,6 +488,7 @@ export default function Home() {
         onClose={() => setActiveField(null)}
       />
 
+      {/* HEADER */}
       <header
         className={`fixed top-0 z-30 w-full h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${isDarkMode ? "bg-slate-900/80" : "bg-white/80"}`}
       >
@@ -494,6 +518,7 @@ export default function Home() {
         </div>
       </header>
 
+      {/* SIDEBAR */}
       <div
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}
         onClick={() => setIsSidebarOpen(false)}
@@ -573,6 +598,7 @@ export default function Home() {
         </div>
       </aside>
 
+      {/* CONTENT */}
       <main
         className={`pt-20 pb-10 w-full min-h-screen transition-all duration-300 ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"}`}
       >
