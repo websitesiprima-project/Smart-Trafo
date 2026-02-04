@@ -6,68 +6,14 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle,
-  Printer,
   Info,
 } from "lucide-react";
 import DuvalPentagon from "./DuvalPentagon";
 import { supabase } from "../lib/supabaseClient";
 
-// --- MAPPING ULTG (DATA MASTER) ---
-const ULTG_MAPPING = {
-  Lopana: [
-    "GI Lopana",
-    "GI Amurang",
-    "GI Kawangkoan",
-    "PLTP Lahendong 12",
-    "PLTP Lahendong 34",
-    "GI Tomohon",
-    "GI Tasikria",
-    "GI Tonsealama",
-    "GI Sawangan",
-    "PLTA Tanggari I",
-    "PLTA Tanggari II",
-    "PLTA Tonsealama",
-  ],
-  Sawangan: [
-    "GI Teling",
-    "GIS Teling",
-    "GIS Sario",
-    "GI Bitung",
-    "GI Likupang",
-    "GI Likupang New",
-    "GI Paniki",
-    "GI Tanjung Merah",
-    "GI Ranomuut",
-    "GI Kema",
-    "GI Pandu",
-    "GI MSM",
-  ],
-  Kotamobagu: [
-    "GI Kotamobagu",
-    "GI Lolak",
-    "GI Otam",
-    "PLTU SULUT 1",
-    "GI Tutuyan",
-    "GI Molibagu",
-  ],
-  Gorontalo: [
-    "GI Gorontalo",
-    "GI Isimu",
-    "GI Marisa",
-    "GI Botupingge",
-    "GI Kwandang",
-    "GI Boroko",
-    "GI Anggrek",
-    "GI Tolinggula",
-    "GI Tilamuta",
-    "PLTG Maleo",
-    "PT BJA",
-  ],
-};
-
 const InputFormPage = ({
   formData,
-  handleChange, // Ini fungsi dari App.jsx
+  handleChange,
   setFormData,
   handleSubmit,
   result,
@@ -75,62 +21,64 @@ const InputFormPage = ({
   isLoading,
   userRole,
   userUnit,
+  unitMapping = {},
 }) => {
   const [dynamicGIs, setDynamicGIs] = useState([]);
   const [dynamicTrafos, setDynamicTrafos] = useState([]);
-  const isSuperAdmin = userRole === "super_admin" || !userUnit;
 
-  // --- WRAPPER CHANGE HANDLER (FIX INPUT HAPUS 0) ---
-  const handleLocalChange = (e) => {
-    const { name, value, type } = e.target;
+  const isSuperAdmin = userRole === "super_admin";
 
-    // Jika input number kosong, set ke "" (string kosong) di state lokal
-    // Nanti saat submit baru dikonversi ke 0
-    if (type === "number" && value === "") {
-      setFormData((prev) => ({ ...prev, [name]: "" }));
-    } else {
-      handleChange(e); // Panggil handler asli
-    }
-  };
-
-  const sortTrafos = (trafos) => {
-    return [...trafos].sort((a, b) => {
-      const aName = a.nama_trafo || "";
-      const bName = b.nama_trafo || "";
-      const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
-      const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
-      if (!aMatch || !bMatch) return aName.localeCompare(bName);
-      return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
-    });
-  };
-
-  // --- FETCH ASSETS ---
+  // --- 1. LOGIKA PENCARIAN GI (DIPERBAIKI LAGI) ---
   useEffect(() => {
-    const fetchAssets = async () => {
-      const { data } = await supabase.from("assets_trafo").select("lokasi_gi");
-      if (data) {
-        let uniqueGIs = [...new Set(data.map((item) => item.lokasi_gi))]
-          .filter(Boolean)
-          .sort();
-        if (isSuperAdmin) {
-          setDynamicGIs(uniqueGIs);
-        } else {
-          if (userUnit && ULTG_MAPPING[userUnit]) {
-            const allowed = ULTG_MAPPING[userUnit];
-            const filteredGIs = uniqueGIs.filter((gi) =>
-              allowed.some((a) => gi.toLowerCase().includes(a.toLowerCase())),
-            );
-            setDynamicGIs(filteredGIs);
-          } else {
-            setDynamicGIs([]);
-          }
-        }
-      }
-    };
-    fetchAssets();
-  }, [userRole, userUnit, isSuperAdmin]);
+    let availableGIs = [];
 
-  // --- FETCH TRAFOS ---
+    // Debugging: Cek data yang masuk
+    console.log("🛠️ Input Form Debug:");
+    console.log(" - User Unit:", userUnit);
+    console.log(" - Mapping Keys:", Object.keys(unitMapping));
+
+    if (!unitMapping || Object.keys(unitMapping).length === 0) return;
+
+    if (isSuperAdmin) {
+      // Super Admin: Ambil Semua
+      Object.values(unitMapping).forEach((giList) => {
+        if (Array.isArray(giList)) {
+          // Support format baru (objek) atau lama (string)
+          giList.forEach((gi) => {
+            const name = typeof gi === "string" ? gi : gi.name;
+            if (name) availableGIs.push(name);
+          });
+        }
+      });
+    } else {
+      // Admin Unit: Cari yang cocok (Sangat Longgar)
+      const targetUnit = (userUnit || "")
+        .toLowerCase()
+        .replace(/ultg/g, "")
+        .trim(); // Hapus 'ultg', trim spasi
+
+      const foundKey = Object.keys(unitMapping).find((key) => {
+        const cleanKey = key.toLowerCase().replace(/ultg/g, "").trim();
+        // Cek apakah target ada di key, atau key ada di target
+        return cleanKey.includes(targetUnit) || targetUnit.includes(cleanKey);
+      });
+
+      console.log(` - Target Bersih: "${targetUnit}"`);
+      console.log(` - Key Ketemu: "${foundKey}"`);
+
+      const unitGis = foundKey ? unitMapping[foundKey] : [];
+
+      if (Array.isArray(unitGis)) {
+        availableGIs = unitGis.map((gi) =>
+          typeof gi === "string" ? gi : gi.name,
+        );
+      }
+    }
+
+    setDynamicGIs(availableGIs.sort());
+  }, [unitMapping, userRole, userUnit, isSuperAdmin]);
+
+  // --- 2. FETCH TRAFOS (TETAP SAMA) ---
   useEffect(() => {
     const fetchTrafos = async () => {
       if (formData.lokasi_gi) {
@@ -138,6 +86,7 @@ const InputFormPage = ({
           .from("assets_trafo")
           .select("*")
           .eq("lokasi_gi", formData.lokasi_gi);
+
         if (data) setDynamicTrafos(data);
       } else {
         setDynamicTrafos([]);
@@ -146,7 +95,7 @@ const InputFormPage = ({
     fetchTrafos();
   }, [formData.lokasi_gi]);
 
-  // --- AUTOFILL ---
+  // --- 3. AUTOFILL (TETAP SAMA) ---
   useEffect(() => {
     if (typeof setFormData !== "function") return;
     if (formData.lokasi_gi && formData.nama_trafo) {
@@ -164,6 +113,17 @@ const InputFormPage = ({
       }
     }
   }, [formData.lokasi_gi, formData.nama_trafo, dynamicTrafos, setFormData]);
+
+  const sortTrafos = (trafos) => {
+    return [...trafos].sort((a, b) => {
+      const aName = a.nama_trafo || "";
+      const bName = b.nama_trafo || "";
+      const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+      const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
+      if (!aMatch || !bMatch) return aName.localeCompare(bName);
+      return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
+    });
+  };
 
   const theme = {
     bg: isDarkMode ? "bg-[#0f172a]" : "bg-gray-50",
@@ -186,7 +146,6 @@ const InputFormPage = ({
   const inputClass = `w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all ${theme.input}`;
   const readOnlyClass = `${inputClass} cursor-not-allowed ${theme.readOnly}`;
 
-  // Data Tabel
   const gasTableData = [
     { name: "Karbon Monoksida", rumus: "CO", value: formData.co },
     { name: "Karbon Dioksida", rumus: "CO2", value: formData.co2 },
@@ -219,15 +178,15 @@ const InputFormPage = ({
           onSubmit={handleSubmit}
           className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
         >
-          {/* KOLOM KIRI */}
           <div className={`lg:col-span-7 rounded-2xl p-6 border ${theme.card}`}>
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-dashed border-gray-500/30">
                 <FileText className="text-[#1B7A8F]" size={18} />
                 <h3 className={`font-bold text-base uppercase ${theme.text}`}>
-                  Identitas Aset (Database)
+                  Identitas Aset
                 </h3>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2 grid grid-cols-2 gap-4">
                   <div>
@@ -240,11 +199,15 @@ const InputFormPage = ({
                       required
                     >
                       <option value="">- Pilih GI -</option>
-                      {dynamicGIs.map((giName, idx) => (
-                        <option key={idx} value={giName}>
-                          {giName}
-                        </option>
-                      ))}
+                      {dynamicGIs.length === 0 ? (
+                        <option disabled>Tidak ada GI ditemukan</option>
+                      ) : (
+                        dynamicGIs.map((giName, idx) => (
+                          <option key={idx} value={giName}>
+                            {giName}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -258,6 +221,9 @@ const InputFormPage = ({
                       required
                     >
                       <option value="">- Pilih Trafo -</option>
+                      {dynamicTrafos.length === 0 && (
+                        <option disabled>Belum ada aset terdaftar</option>
+                      )}
                       {sortTrafos(dynamicTrafos).map((t, idx) => (
                         <option key={idx} value={t.nama_trafo}>
                           {t.nama_trafo}
@@ -300,6 +266,7 @@ const InputFormPage = ({
                 </div>
               </div>
             </div>
+
             <div>
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-dashed border-gray-500/30">
                 <Thermometer className="text-orange-500" size={18} />
@@ -320,6 +287,19 @@ const InputFormPage = ({
                   />
                 </div>
                 <div>
+                  <label className={labelClass}>Suhu (°C)</label>
+                  <input
+                    type="number"
+                    name="suhu_sampel"
+                    value={
+                      formData.suhu_sampel === 0 ? "" : formData.suhu_sampel
+                    }
+                    onChange={handleChange}
+                    className={inputClass}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
                   <label className={labelClass}>Petugas</label>
                   <input
                     type="text"
@@ -334,7 +314,6 @@ const InputFormPage = ({
             </div>
           </div>
 
-          {/* KOLOM KANAN: INPUT GAS */}
           <div className={`lg:col-span-5 flex flex-col h-full`}>
             <div className={`flex-1 rounded-2xl p-6 border mb-4 ${theme.card}`}>
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-dashed border-gray-500/30">
@@ -356,10 +335,7 @@ const InputFormPage = ({
                         type="number"
                         step="0.1"
                         name={gas}
-                        // 🔥 FIX: Biarkan nilai string kosong jika user menghapus, jangan paksa 0
                         value={formData[gas] === 0 ? "" : formData[gas]}
-                        // 🔥 Gunakan handleLocalChange jika mau validasi extra, atau langsung handleChange (default app)
-                        // Karena di App.jsx handleChange sudah convert number, kita akali di value props saja (baris atas)
                         onChange={handleChange}
                         className={`w-full pl-14 pr-4 py-2.5 rounded-lg border text-right font-mono text-lg font-bold outline-none focus:ring-1 focus:ring-green-500 transition-all ${isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-gray-300 text-gray-900"}`}
                         placeholder="0"
@@ -385,7 +361,6 @@ const InputFormPage = ({
           </div>
         </form>
 
-        {/* HASIL */}
         {result && (
           <div className="animate-in slide-in-from-bottom-10 fade-in duration-500 space-y-6">
             <div
@@ -412,16 +387,14 @@ const InputFormPage = ({
                   </h3>
                 </div>
               </div>
-              <div className="flex items-center gap-6 z-10">
-                <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase text-gray-500">
-                    TDCG Level
-                  </p>
-                  <p className="text-2xl font-mono font-bold text-gray-800">
-                    {result.tdcg_value?.toFixed(0)}{" "}
-                    <span className="text-sm font-sans text-gray-500">ppm</span>
-                  </p>
-                </div>
+              <div className="text-right z-10">
+                <p className="text-[10px] font-bold uppercase text-gray-500">
+                  TDCG Level
+                </p>
+                <p className="text-2xl font-mono font-bold text-gray-800">
+                  {result.tdcg_value?.toFixed(0)}{" "}
+                  <span className="text-sm font-sans text-gray-500">ppm</span>
+                </p>
               </div>
             </div>
 

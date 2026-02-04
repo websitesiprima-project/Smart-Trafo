@@ -33,52 +33,6 @@ import { saveAs } from "file-saver";
 import { supabase } from "../lib/supabaseClient";
 import ExcelImportModal from "./ExcelImportModal";
 
-// --- 1. DEFINISI MAPPING ---
-const ULTG_MAPPING = {
-  Lopana: [
-    "GI AMURANG",
-    "GI LOPANA",
-    "GI KAWANGKOAN",
-    "PLTP LAHENDONG 12",
-    "PLTP LAHENDONG 34",
-    "GI TOMOHON",
-    "GI TASIKRIA",
-    "GI TONSEALAMA",
-    "GI SAWANGAN",
-  ],
-  Sawangan: [
-    "GI TELING",
-    "GIS TELING",
-    "GIS SARIO",
-    "GI KEMA",
-    "GI TANJUNG MERAH",
-    "GI BITUNG",
-    "GI RANOMUUT",
-    "GI PANIKI",
-    "GI PANDU",
-    "GI LIKUPANG",
-    "GI LIKUPANG NEW",
-    "GI MSM",
-  ],
-  Kotamobagu: [
-    "PLTU SULUT 1",
-    "GI LOLAK",
-    "GI MOLIBAGU",
-    "GI OTAM",
-    "GI TUTUYAN",
-  ],
-  Gorontalo: [
-    "GI MARISA",
-    "GI TILAMUTA",
-    "GI TOLINGGULA",
-    "GI ANGGREK",
-    "GI ISIMU",
-    "GI GORONTALO BARU",
-    "GI BOTUPINGGE",
-    "GI BOROKO",
-  ],
-};
-
 const HistoryPage = ({
   historyData,
   isDarkMode,
@@ -88,6 +42,7 @@ const HistoryPage = ({
   userRole,
   userUnit,
   onNavigateToGuide,
+  unitMapping = {}, // 🔥 TERIMA UNIT MAPPING DINAMIS
 }) => {
   // State Filter & Search
   const [searchTerm, setSearchTerm] = useState("");
@@ -101,7 +56,7 @@ const HistoryPage = ({
 
   // State Delete Confirmation Modal
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'single' | 'batch' | 'all', id?: number, count?: number }
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   // State Batch
@@ -114,12 +69,14 @@ const HistoryPage = ({
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [masterAssets, setMasterAssets] = useState([]);
 
-  // Pagination (Dibuat State agar bisa diubah user)
+  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10); // Default 10
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // State Import Excel
   const [showImportModal, setShowImportModal] = useState(false);
+
+  const isSuperAdmin = userRole === "super_admin";
 
   // --- FETCH MASTER ASSETS ---
   useEffect(() => {
@@ -130,10 +87,21 @@ const HistoryPage = ({
     fetchAssets();
   }, []);
 
-  const uniqueGIs = useMemo(
-    () => [...new Set(masterAssets.map((a) => a.lokasi_gi))].sort(),
-    [masterAssets],
-  );
+  // --- PROSES DATA GI DARI MAPPING (UNTUK FILTER & EDIT) ---
+  const allGIs = useMemo(() => {
+    let list = [];
+    if (!unitMapping || Object.keys(unitMapping).length === 0) return [];
+
+    Object.values(unitMapping).forEach((giList) => {
+      if (Array.isArray(giList)) {
+        giList.forEach((gi) => {
+          const name = typeof gi === "string" ? gi : gi.name;
+          if (name) list.push(name);
+        });
+      }
+    });
+    return list.sort();
+  }, [unitMapping]);
 
   const availableTrafosForEdit = useMemo(() => {
     if (!editFormData.lokasi_gi) return [];
@@ -208,13 +176,29 @@ const HistoryPage = ({
     }
   };
 
-  // --- FILTER LOGIC ---
+  // --- FILTER LOGIC (MENGGUNAKAN MAPPING DINAMIS) ---
   const filteredData = useMemo(() => {
     let baseData = historyData;
-    const isSuperAdmin = userRole === "super_admin" || !userUnit;
 
-    if (!isSuperAdmin) {
-      const allowedGIs = ULTG_MAPPING[userUnit] || [];
+    // 1. Filter by Unit (Jika bukan Super Admin)
+    if (!isSuperAdmin && userUnit) {
+      // Cari GI yang sesuai dengan unit user (Fuzzy Match)
+      const targetUnit = (userUnit || "")
+        .toLowerCase()
+        .replace(/ultg/g, "")
+        .trim();
+      const foundKey = Object.keys(unitMapping).find((key) => {
+        const cleanKey = key.toLowerCase().replace(/ultg/g, "").trim();
+        return cleanKey.includes(targetUnit) || targetUnit.includes(cleanKey);
+      });
+
+      const allowedGIs =
+        foundKey && Array.isArray(unitMapping[foundKey])
+          ? unitMapping[foundKey].map((g) =>
+              typeof g === "string" ? g : g.name,
+            )
+          : [];
+
       baseData = historyData.filter((item) => {
         const itemGI = (item.lokasi_gi || "").trim();
         return allowedGIs.some(
@@ -225,6 +209,7 @@ const HistoryPage = ({
       });
     }
 
+    // 2. Filter by Search & Options
     let result = baseData.filter((item) => {
       const term = searchTerm.toLowerCase();
       const matchText =
@@ -274,6 +259,7 @@ const HistoryPage = ({
     sortTdcg,
     userRole,
     userUnit,
+    unitMapping, // Dependency penting!
   ]);
 
   // --- PAGINATION LOGIC ---
@@ -297,9 +283,8 @@ const HistoryPage = ({
 
   // --- HANDLERS ---
   const handleDelete = async (id) => {
-    // Tampilkan modal konfirmasi
     const item = historyData.find((d) => d.id === id);
-    setDeleteTarget({ type: 'single', id, item });
+    setDeleteTarget({ type: "single", id, item });
     setShowDeleteModal(true);
   };
 
@@ -309,10 +294,10 @@ const HistoryPage = ({
     setIsDeleting(true);
 
     try {
-      if (deleteTarget.type === 'single') {
+      if (deleteTarget.type === "single") {
         await supabase.from("riwayat_uji").delete().eq("id", deleteTarget.id);
         toast.success("Data berhasil dihapus");
-      } else if (deleteTarget.type === 'batch') {
+      } else if (deleteTarget.type === "batch") {
         let count = 0;
         for (const id of selectedIds) {
           await supabase.from("riwayat_uji").delete().eq("id", id);
@@ -321,7 +306,7 @@ const HistoryPage = ({
         toast.success(`${count} data berhasil dihapus`);
         setSelectedIds([]);
         setSelectionMode(false);
-      } else if (deleteTarget.type === 'all') {
+      } else if (deleteTarget.type === "all") {
         await onDeleteAll();
         toast.success("Semua data berhasil dihapus");
       }
@@ -342,8 +327,7 @@ const HistoryPage = ({
       toast.info("Data kosong.");
       return;
     }
-    // Tampilkan modal konfirmasi untuk hapus semua
-    setDeleteTarget({ type: 'all', count: historyData.length });
+    setDeleteTarget({ type: "all", count: historyData.length });
     setDeleteConfirmText("");
     setShowDeleteModal(true);
   };
@@ -423,15 +407,16 @@ const HistoryPage = ({
       toast.warning("Pilih minimal 1 data.");
       return;
     }
-    // Tampilkan modal konfirmasi
-    setDeleteTarget({ type: 'batch', count: selectedIds.length });
+    setDeleteTarget({ type: "batch", count: selectedIds.length });
     setShowDeleteModal(true);
   };
 
-  const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
-    }`;
-  const tdClass = `px-6 py-4 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"
-    }`;
+  const thClass = `px-6 py-4 text-left text-xs font-bold uppercase ${
+    isDarkMode ? "bg-slate-800 text-slate-400" : "bg-gray-100 text-gray-600"
+  }`;
+  const tdClass = `px-6 py-4 border-b ${
+    isDarkMode ? "border-slate-700" : "border-gray-100"
+  }`;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
@@ -447,7 +432,7 @@ const HistoryPage = ({
             <p
               className={`text-sm mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}
             >
-              Total: {filteredData.length} / {filteredData.length} Data
+              Total: {filteredData.length} / {historyData.length} Data
             </p>
           </div>
         </div>
@@ -610,7 +595,7 @@ const HistoryPage = ({
                       className="flex items-center justify-center w-full"
                     >
                       {selectedIds.length === filteredData.length &&
-                        filteredData.length > 0 ? (
+                      filteredData.length > 0 ? (
                         <CheckSquare size={18} className="text-blue-500" />
                       ) : (
                         <Square size={18} className="text-gray-400" />
@@ -623,7 +608,9 @@ const HistoryPage = ({
                 <th className={thClass}>
                   Status{" "}
                   <span
-                    onClick={() => onNavigateToGuide && onNavigateToGuide("ieee")}
+                    onClick={() =>
+                      onNavigateToGuide && onNavigateToGuide("ieee")
+                    }
                     className="text-[#17A2B8] cursor-pointer hover:underline hover:text-[#1B7A8F] transition-colors"
                     title="Klik untuk melihat panduan IEEE C57.104"
                   >
@@ -673,7 +660,9 @@ const HistoryPage = ({
                         {item.tanggal_sampling}
                       </div>
                       <div className="text-xs text-gray-500 font-mono mt-1">
-                        #{filteredData.length - ((currentPage - 1) * itemsPerPage + index)}
+                        #
+                        {filteredData.length -
+                          ((currentPage - 1) * itemsPerPage + index)}
                       </div>
                     </td>
                     <td className={tdClass}>
@@ -699,7 +688,7 @@ const HistoryPage = ({
                     {!selectionMode && (
                       <td className={`text-center ${tdClass}`}>
                         <div className="flex justify-center gap-2">
-                          {/* Edit Button with Tooltip */}
+                          {/* Edit Button */}
                           <div className="relative group">
                             <button
                               onClick={() => openEditModal(item)}
@@ -712,7 +701,7 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* Detail Button with Tooltip */}
+                          {/* Detail Button */}
                           <div className="relative group">
                             <button
                               onClick={() => setSelectedItem(item)}
@@ -725,7 +714,7 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* Download PDF Button with Tooltip */}
+                          {/* PDF Button */}
                           <div className="relative group">
                             <button
                               onClick={() => generatePDFFromTemplate(item)}
@@ -738,7 +727,7 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* Delete Button with Tooltip */}
+                          {/* Delete Button */}
                           <div className="relative group">
                             <button
                               onClick={() => handleDelete(item.id)}
@@ -762,12 +751,11 @@ const HistoryPage = ({
         </div>
       </div>
 
-      {/* PAGINATION (DENGAN SELECTOR JUMLAH BARIS) */}
+      {/* PAGINATION */}
       {filteredData.length > 0 && (
         <div
           className={`p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4 ${isDarkMode ? "border-slate-700" : "border-gray-200"}`}
         >
-          {/* SELECTOR BARIS PER HALAMAN */}
           <div className="flex items-center gap-2">
             <span
               className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
@@ -818,7 +806,6 @@ const HistoryPage = ({
           <div
             className={`w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
           >
-            {/* Header Modal */}
             <div
               className={`flex justify-between items-center p-6 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"}`}
             >
@@ -851,7 +838,6 @@ const HistoryPage = ({
               </button>
             </div>
 
-            {/* Body Modal */}
             <div className="flex-1 overflow-y-auto p-6">
               {isEditing ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -867,7 +853,7 @@ const HistoryPage = ({
                         className={`w-full p-2 rounded border ${isDarkMode ? "bg-slate-700 border-slate-600 text-white" : "bg-gray-50 border-gray-200"}`}
                       >
                         <option value="">-- Pilih GI --</option>
-                        {uniqueGIs.map((gi, i) => (
+                        {allGIs.map((gi, i) => (
                           <option key={i} value={gi}>
                             {gi}
                           </option>
@@ -893,6 +879,7 @@ const HistoryPage = ({
                         ))}
                       </select>
                     </div>
+                    {/* ... Sisa input form edit sama ... */}
                     <div>
                       <label className="text-xs font-bold uppercase text-gray-500">
                         Merk
@@ -919,7 +906,7 @@ const HistoryPage = ({
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs font-bold uppercase text-gray-500">
-                        Tahun Pembuatan
+                        Tahun
                       </label>
                       <input
                         type="number"
@@ -931,7 +918,7 @@ const HistoryPage = ({
                     </div>
                     <div>
                       <label className="text-xs font-bold uppercase text-gray-500">
-                        Level Tegangan
+                        Tegangan
                       </label>
                       <input
                         name="level_tegangan"
@@ -942,7 +929,7 @@ const HistoryPage = ({
                     </div>
                     <div>
                       <label className="text-xs font-bold uppercase text-gray-500">
-                        Petugas Sampling
+                        Petugas
                       </label>
                       <input
                         name="diambil_oleh"
@@ -964,7 +951,6 @@ const HistoryPage = ({
                       />
                     </div>
                   </div>
-
                   <div className="md:col-span-2 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-lg flex items-start gap-3">
                     <AlertTriangle
                       className="text-yellow-600 shrink-0"
@@ -1049,7 +1035,6 @@ const HistoryPage = ({
               )}
             </div>
 
-            {/* Footer Modal */}
             <div
               className={`p-4 border-t flex justify-end gap-3 ${isDarkMode ? "border-slate-700 bg-slate-900" : "border-gray-100 bg-gray-50"}`}
             >
@@ -1107,142 +1092,107 @@ const HistoryPage = ({
           <div
             className={`w-full max-w-md rounded-2xl shadow-2xl overflow-hidden ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
           >
-            {/* Header */}
             <div className="bg-red-600 p-6 text-white text-center">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/20 flex items-center justify-center">
                 <AlertTriangle size={32} className="text-white" />
               </div>
               <h3 className="text-xl font-bold">
-                {deleteTarget?.type === 'single' && "Konfirmasi Hapus Data"}
-                {deleteTarget?.type === 'batch' && "Konfirmasi Hapus Data Terpilih"}
-                {deleteTarget?.type === 'all' && "Konfirmasi Hapus SEMUA Data"}
+                {deleteTarget?.type === "single" && "Konfirmasi Hapus Data"}
+                {deleteTarget?.type === "batch" &&
+                  "Konfirmasi Hapus Data Terpilih"}
+                {deleteTarget?.type === "all" && "Konfirmasi Hapus SEMUA Data"}
               </h3>
               <p className="text-sm opacity-80 mt-1">
-                {deleteTarget?.type === 'single' && "Anda akan menghapus 1 data pengujian"}
-                {deleteTarget?.type === 'batch' && `Anda akan menghapus ${deleteTarget.count} data terpilih`}
-                {deleteTarget?.type === 'all' && `Anda akan menghapus SEMUA data pengujian (${deleteTarget?.count || 0} data)`}
+                {deleteTarget?.type === "single" &&
+                  "Anda akan menghapus 1 data pengujian"}
+                {deleteTarget?.type === "batch" &&
+                  `Anda akan menghapus ${deleteTarget.count} data terpilih`}
+                {deleteTarget?.type === "all" &&
+                  `Anda akan menghapus SEMUA data pengujian (${deleteTarget?.count || 0} data)`}
               </p>
             </div>
 
-            {/* Body */}
             <div className="p-6">
-              {/* Info data yang akan dihapus */}
-              {deleteTarget?.type === 'single' && deleteTarget.item && (
-                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
-                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
+              {deleteTarget?.type === "single" && deleteTarget.item && (
+                <div
+                  className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}
+                >
+                  <p
+                    className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}
+                  >
                     {deleteTarget.item.nama_trafo}
                   </p>
-                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                    {deleteTarget.item.lokasi_gi} • {deleteTarget.item.tanggal_sampling}
+                  <p
+                    className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
+                  >
+                    {deleteTarget.item.lokasi_gi} •{" "}
+                    {deleteTarget.item.tanggal_sampling}
                   </p>
-                  <p className={`text-xs mt-1 ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}>
+                  <p
+                    className={`text-xs mt-1 ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}
+                  >
                     ID: #{deleteTarget.item.id}
                   </p>
                 </div>
               )}
 
-              {deleteTarget?.type === 'batch' && (
-                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
-                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-                    {deleteTarget.count} Data Terpilih
-                  </p>
-                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                    Data yang dipilih akan dihapus secara permanen
-                  </p>
-                </div>
-              )}
-
-              {deleteTarget?.type === 'all' && (
-                <div className={`p-4 rounded-lg mb-4 ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
-                  <p className={`text-sm font-bold ${isDarkMode ? "text-white" : "text-gray-800"}`}>
-                    {deleteTarget?.count || 0} Data Akan Dihapus
-                  </p>
-                  <p className={`text-xs ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                    Seluruh riwayat pengujian DGA akan dihapus secara permanen
-                  </p>
-                </div>
-              )}
-
-              <div className={`p-4 rounded-lg border-2 border-dashed mb-4 ${isDarkMode ? "border-red-800 bg-red-900/20" : "border-red-200 bg-red-50"}`}>
+              <div
+                className={`p-4 rounded-lg border-2 border-dashed mb-4 ${isDarkMode ? "border-red-800 bg-red-900/20" : "border-red-200 bg-red-50"}`}
+              >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle size={20} className="text-red-500 shrink-0 mt-0.5" />
+                  <AlertTriangle
+                    size={20}
+                    className="text-red-500 shrink-0 mt-0.5"
+                  />
                   <div>
-                    <p className={`text-sm font-bold ${isDarkMode ? "text-red-400" : "text-red-700"}`}>
+                    <p
+                      className={`text-sm font-bold ${isDarkMode ? "text-red-400" : "text-red-700"}`}
+                    >
                       Peringatan!
                     </p>
-                    <p className={`text-xs ${isDarkMode ? "text-red-300/80" : "text-red-600/80"}`}>
-                      Tindakan ini tidak dapat dibatalkan. Data yang dihapus tidak bisa dikembalikan.
+                    <p
+                      className={`text-xs ${isDarkMode ? "text-red-300/80" : "text-red-600/80"}`}
+                    >
+                      Tindakan ini tidak dapat dibatalkan. Data yang dihapus
+                      tidak bisa dikembalikan.
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* 🔥 Double verification input - untuk hapus batch (ULTG only) dan hapus semua */}
-              {deleteTarget?.type === 'batch' && userRole !== "super_admin" && userUnit && (
+              {/* Verify Input */}
+              {(deleteTarget?.type === "batch" &&
+                userRole !== "super_admin" &&
+                userUnit) ||
+              deleteTarget?.type === "all" ? (
                 <>
                   <div className="mb-4">
-                    <label className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
-                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS ULTG {userUnit.toUpperCase()}</span> untuk konfirmasi:
+                    <label
+                      className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}
+                    >
+                      Ketik{" "}
+                      <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">
+                        {deleteTarget?.type === "all"
+                          ? "HAPUS SEMUANYA"
+                          : `HAPUS ULTG ${userUnit.toUpperCase()}`}
+                      </span>{" "}
+                      untuk konfirmasi:
                     </label>
                     <input
                       type="text"
                       value={deleteConfirmText}
                       onChange={(e) => setDeleteConfirmText(e.target.value)}
-                      placeholder={`Ketik HAPUS ULTG ${userUnit.toUpperCase()} di sini...`}
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-sm uppercase tracking-wide outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === `HAPUS ULTG ${userUnit.toUpperCase()}`
-                        ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                        : isDarkMode
-                          ? "border-slate-600 bg-slate-700 text-white"
-                          : "border-gray-300 bg-white"
-                        }`}
+                      placeholder="Ketik konfirmasi di sini..."
+                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-sm uppercase tracking-wide outline-none transition-all ${isDarkMode ? "bg-slate-900 border-slate-600 text-white" : "border-gray-300 bg-white"}`}
                     />
                   </div>
-
-                  {/* Progress indicator */}
-                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== `HAPUS ULTG ${userUnit.toUpperCase()}` && (
-                    <p className={`text-xs text-center mb-4 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                      {`HAPUS ULTG ${userUnit.toUpperCase()}`.slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
-                        ? `✓ ${deleteConfirmText.trim().length}/${`HAPUS ULTG ${userUnit.toUpperCase()}`.length} karakter benar`
-                        : `✗ Ketik 'HAPUS ULTG ${userUnit.toUpperCase()}' dengan benar`}
-                    </p>
-                  )}
                 </>
-              )}
-
-              {deleteTarget?.type === 'all' && (
-                <>
-                  <div className="mb-4">
-                    <label className={`block text-sm font-bold mb-2 ${isDarkMode ? "text-slate-300" : "text-gray-700"}`}>
-                      Ketik <span className="text-red-500 font-mono bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded">HAPUS SEMUANYA</span> untuk konfirmasi:
-                    </label>
-                    <input
-                      type="text"
-                      value={deleteConfirmText}
-                      onChange={(e) => setDeleteConfirmText(e.target.value)}
-                      placeholder="Ketik HAPUS SEMUANYA di sini..."
-                      className={`w-full px-4 py-3 rounded-lg border-2 text-center font-mono text-lg uppercase tracking-widest outline-none transition-all ${deleteConfirmText.trim().toUpperCase() === "HAPUS SEMUANYA"
-                        ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                        : isDarkMode
-                          ? "border-slate-600 bg-slate-700 text-white"
-                          : "border-gray-300 bg-white"
-                        }`}
-                    />
-                  </div>
-
-                  {/* Progress indicator */}
-                  {deleteConfirmText && deleteConfirmText.trim().toUpperCase() !== "HAPUS SEMUANYA" && (
-                    <p className={`text-xs text-center mb-4 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                      {"HAPUS SEMUANYA".slice(0, deleteConfirmText.trim().length) === deleteConfirmText.trim().toUpperCase()
-                        ? `✓ ${deleteConfirmText.trim().length}/12 karakter benar`
-                        : "✗ Ketik 'HAPUS SEMUANYA' dengan benar"}
-                    </p>
-                  )}
-                </>
-              )}
+              ) : null}
             </div>
 
-            {/* Footer */}
-            <div className={`p-4 border-t flex gap-3 ${isDarkMode ? "border-slate-700 bg-slate-900" : "border-gray-100 bg-gray-50"}`}>
+            <div
+              className={`p-4 border-t flex gap-3 ${isDarkMode ? "border-slate-700 bg-slate-900" : "border-gray-100 bg-gray-50"}`}
+            >
               <button
                 onClick={() => {
                   setShowDeleteModal(false);
@@ -1258,29 +1208,23 @@ const HistoryPage = ({
                 onClick={confirmDelete}
                 disabled={
                   isDeleting ||
-                  (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() !== "HAPUS SEMUANYA") ||
-                  (deleteTarget?.type === 'batch' && userRole !== "super_admin" && userUnit && deleteConfirmText.trim().toUpperCase() !== `HAPUS ULTG ${userUnit.toUpperCase()}`)
+                  (deleteTarget?.type === "all" &&
+                    deleteConfirmText.trim().toUpperCase() !==
+                      "HAPUS SEMUANYA") ||
+                  (deleteTarget?.type === "batch" &&
+                    userRole !== "super_admin" &&
+                    userUnit &&
+                    deleteConfirmText.trim().toUpperCase() !==
+                      `HAPUS ULTG ${userUnit.toUpperCase()}`)
                 }
-                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  !isDeleting &&
-                  (deleteTarget?.type === 'single' ||
-                   (deleteTarget?.type === 'all' && deleteConfirmText.trim().toUpperCase() === "HAPUS SEMUANYA") ||
-                   (deleteTarget?.type === 'batch' && (userRole === "super_admin" || !userUnit || deleteConfirmText.trim().toUpperCase() === `HAPUS ULTG ${userUnit.toUpperCase()}`)))
-                    ? "bg-red-600 hover:bg-red-700 text-white"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                }`}
+                className={`flex-1 px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed`}
               >
                 {isDeleting ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} />
-                    Menghapus...
-                  </>
+                  <Loader2 className="animate-spin" size={16} />
                 ) : (
-                  <>
-                    <Trash2 size={16} />
-                    Hapus Permanen
-                  </>
+                  <Trash2 size={16} />
                 )}
+                Hapus
               </button>
             </div>
           </div>

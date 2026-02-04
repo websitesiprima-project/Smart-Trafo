@@ -8,6 +8,7 @@ import sys
 from groq import Groq
 from supabase import create_client, Client
 from dotenv import load_dotenv 
+from typing import Any, cast, Dict # 🔥 NEW IMPORTS FOR TYPING FIX
 
 # 1. LOAD ENVIRONMENT
 load_dotenv()
@@ -31,6 +32,7 @@ app.add_middleware(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 VITE_SUPABASE_URL = os.getenv("VITE_SUPABASE_URL") or os.getenv("SUPABASE_URL")
 VITE_SUPABASE_KEY = os.getenv("VITE_SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 # Init Groq
 groq_client = None
@@ -41,16 +43,25 @@ if GROQ_API_KEY:
     except Exception as e:
         print(f"❌ Groq Error: {e}")
 
-# Init Supabase
+# Init Supabase (Client Biasa)
 supabase = None
 db_active = False
 if VITE_SUPABASE_URL and VITE_SUPABASE_KEY:
     try:
         supabase = create_client(VITE_SUPABASE_URL, VITE_SUPABASE_KEY)
         db_active = True
-        print("✅ Supabase Connected")
+        print("✅ Supabase Client Connected")
     except Exception as e:
-        print(f"❌ Supabase Error: {e}")
+        print(f"❌ Supabase Client Error: {e}")
+
+# Init Supabase Admin (Service Role)
+supabase_admin = None
+if VITE_SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    try:
+        supabase_admin = create_client(VITE_SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        print("✅ Supabase Admin (Service Role) Connected")
+    except Exception as e:
+        print(f"❌ Supabase Admin Error: {e}")
 
 # ==========================================
 # 4. INIT MODEL ML
@@ -108,6 +119,13 @@ class TrafoBaruInput(BaseModel):
 class DeleteRequest(BaseModel):
     user_email: str 
 
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    role: str       
+    unit_ultg: str  
+    requester_email: str
+
 # ==========================================
 # 6. METODE ANALISIS TEKNIS
 # ==========================================
@@ -129,9 +147,6 @@ def analisis_ratio_co2_co(data: TrafoInput):
     return status, ratio
 
 def analisis_duval_triangle_1(data: TrafoInput):
-    """
-    Analisis Duval Triangle 1 sesuai IEC 60599 & IEEE C57.104-2019
-    """
     total = data.ch4 + data.c2h4 + data.c2h2
     if total == 0:
         return "Gas Kosong (Total 0)", 0, 0, 0
@@ -185,9 +200,6 @@ def analisis_duval_triangle_1(data: TrafoInput):
     return diagnosa, pct_ch4, pct_c2h4, pct_c2h2
 
 def analisis_ieee_2019(data: TrafoInput):
-    """
-    Analisis berdasarkan IEEE C57.104-2019 Table 1
-    """
     LIMITS_COND1 = {'h2': 100, 'ch4': 120, 'c2h6': 65, 'c2h4': 50, 'c2h2': 1, 'co': 350}
     LIMITS_COND2 = {'h2': 200, 'ch4': 400, 'c2h6': 100, 'c2h4': 100, 'c2h2': 2, 'co': 570}
     LIMITS_COND3 = {'h2': 300, 'ch4': 600, 'c2h6': 150, 'c2h4': 200, 'c2h2': 9, 'co': 1400}
@@ -250,9 +262,6 @@ def analisis_ieee_2019(data: TrafoInput):
     return status_text, ", ".join(diagnosa) if diagnosa else "Parameter Gas Normal"
 
 def analisis_rogers_ratio(data: TrafoInput):
-    """
-    Analisis Rogers Ratio Method
-    """
     h2 = data.h2
     ch4 = data.ch4
     c2h6 = data.c2h6
@@ -342,7 +351,7 @@ def add_trafo(data: TrafoBaruInput):
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
 
-# --- 2. PREDICT / ANALISIS (DIGABUNG MENJADI SATU) ---
+# --- 2. PREDICT / ANALISIS ---
 @app.post("/predict")
 def predict(data: TrafoInput):
     # A. Jalankan Perhitungan Fisika/Kimia
@@ -435,10 +444,6 @@ Berikan analisis yang AKURAT dan PROPORSIONAL.
         except Exception as e:
             volty_chat = f"Gagal memuat analisis AI: {str(e)}"
 
-    # 🔥🔥 FIX UTAMA: SAYA MENGHAPUS BAGIAN D (PENYIMPANAN KE DB) 🔥🔥
-    # Karena Frontend (React) sudah menyimpan data, Backend tidak perlu menyimpan lagi.
-    # Kode insert ke 'riwayat_uji' dan 'audit_logs' DIHAPUS dari sini.
-
     # E. Return Response ke Frontend
     return {
         "status": "Sukses",
@@ -478,7 +483,7 @@ def chat_with_volty(data: ChatInput):
     except Exception as e:
         return {"reply": f"Error AI: {str(e)}"}
 
-# --- 4. HISTORY & DELETE (DIGABUNG DAN DIPERBAIKI) ---
+# --- 4. HISTORY ---
 @app.get("/history")
 def get_history():
     if not db_active or not supabase: return []
@@ -486,12 +491,11 @@ def get_history():
         return supabase.table("riwayat_uji").select("*").order("id", desc=True).limit(1000).execute().data
     except: return []
 
-# --- 5. MANAGEMEN ASET (GET & DELETE) ---
+# --- 5. MANAGEMEN ASET ---
 @app.get("/assets")
 def get_all_assets():
     if not db_active or not supabase: return []
     try:
-        # Ambil semua data aset trafo, urutkan dari yang terbaru
         response = supabase.table("assets_trafo").select("*").order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
@@ -503,7 +507,6 @@ def delete_asset(asset_id: int, user_email: str):
     if not db_active or not supabase: return {"status": "Error", "msg": "DB Offline"}
     
     try:
-        # 1. Validasi Super Admin
         user_check = supabase.table("profiles").select("role").eq("email", user_email).execute()
         
         current_role = "user"
@@ -515,7 +518,6 @@ def delete_asset(asset_id: int, user_email: str):
         if current_role != 'super_admin':
             return {"status": "Gagal", "msg": "Hanya Super Admin yang boleh menghapus aset master!"}
 
-        # 2. Ambil data sebelum dihapus (untuk log)
         nama_aset = "Unknown Asset"
         asset_data = supabase.table("assets_trafo").select("*").eq("id", asset_id).execute()
         
@@ -524,10 +526,8 @@ def delete_asset(asset_id: int, user_email: str):
             if isinstance(first_asset, dict):
                 nama_aset = f"{first_asset.get('nama_trafo', 'Unknown')} ({first_asset.get('lokasi_gi', 'Unknown')})"
 
-        # 3. Hapus Aset
         supabase.table("assets_trafo").delete().eq("id", asset_id).execute()
 
-        # 4. Catat Audit Log
         supabase.table("audit_logs").insert({
             "user_email": user_email,
             "action": "HAPUS_TRAFO",
@@ -539,9 +539,8 @@ def delete_asset(asset_id: int, user_email: str):
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
 
-
 @app.delete("/history/{item_id}")
-def delete_history_item(item_id: int): # Ganti nama fungsi biar unik
+def delete_history_item(item_id: int):
     if db_active and supabase: 
         try:
             supabase.table("riwayat_uji").delete().eq("id", item_id).execute()
@@ -549,3 +548,309 @@ def delete_history_item(item_id: int): # Ganti nama fungsi biar unik
         except Exception as e: 
             return {"msg": f"Error deleting: {str(e)}"}
     return {"msg": "DB not active"}
+
+# ==========================================
+# 8. MANAJEMEN USER (SUPER ADMIN ONLY) - FINAL FIX
+# ==========================================
+
+@app.post("/admin/create-user")
+def admin_create_user(data: CreateUserRequest):
+    # 1. Pastikan Client Admin Tersedia & Tidak None
+    admin_client = supabase_admin
+    if admin_client is None: 
+        return {"status": "Error", "msg": "Service Key not configured or Supabase offline"}
+
+    # Pastikan Client Public juga ada untuk cek profil
+    public_client = supabase
+    if public_client is None:
+        return {"status": "Error", "msg": "Public Client offline"}
+
+    try:
+        # 2. Cek apakah Requester adalah Super Admin
+        check = public_client.table("profiles")\
+            .select("role")\
+            .eq("email", data.requester_email)\
+            .execute()
+        
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized: User tidak ditemukan"}
+        
+        requester_profile = rows[0]
+        if not isinstance(requester_profile, dict):
+            return {"status": "Error", "msg": "Format data profil invalid"}
+
+        user_role = requester_profile.get("role")
+        if user_role != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized: Hanya Super Admin"}
+
+        # 3. Create User di Supabase Auth
+        # FIX: Gunakan dictionary 'attributes' dan casting ke Any agar Pylance tidak komplain
+        user_attributes = {
+            "email": data.email,
+            "password": data.password,
+            "email_confirm": True,
+            "user_metadata": {"role": data.role, "unit_ultg": data.unit_ultg}
+        }
+        
+        # PYLANCE BYPASS: cast(Any, ...) membungkam error tipe data
+        new_user = admin_client.auth.admin.create_user(attributes=cast(Any, user_attributes))
+        
+        # Ambil ID User Baru (Safe Access tanpa membuat Pylance marah)
+        new_user_id = None
+        
+        # Cek properti user (standar library)
+        if hasattr(new_user, 'user') and new_user.user:
+            new_user_id = new_user.user.id
+        
+        if not new_user_id:
+            # Fallback (biasanya tidak terjadi jika sukses)
+            raise Exception("Gagal mendapatkan ID user baru dari respons Supabase")
+
+        # 4. Update Profile (Upsert)
+        profile_payload = {
+            "id": new_user_id,
+            "email": data.email,
+            "role": data.role,
+            "unit_ultg": data.unit_ultg
+        }
+        
+        admin_client.table("profiles").upsert(profile_payload).execute()
+
+        # 5. Audit Log
+        admin_client.table("audit_logs").insert({
+            "user_email": data.requester_email,
+            "action": "CREATE_USER",
+            "details": f"Membuat user baru: {data.email} ({data.unit_ultg})"
+        }).execute()
+
+        return {"status": "Sukses", "msg": f"User {data.email} berhasil dibuat!"}
+
+    except Exception as e:
+        print(f"Error Create User: {str(e)}") 
+        return {"status": "Error", "msg": f"Gagal membuat user: {str(e)}"}
+
+@app.delete("/admin/delete-user/{target_id}")
+def admin_delete_user(target_id: str, requester_email: str):
+    # 1. Pastikan Client Admin Tersedia
+    admin_client = supabase_admin
+    if admin_client is None: 
+        return {"status": "Error", "msg": "Service Key Missing"}
+    
+    public_client = supabase
+    if public_client is None:
+        return {"status": "Error", "msg": "Public DB Connection Error"}
+    
+    try:
+        # 2. Cek Super Admin (Safe Check)
+        check = public_client.table("profiles")\
+            .select("role")\
+            .eq("email", requester_email)\
+            .execute()
+            
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        requester_profile = rows[0]
+        if not isinstance(requester_profile, dict):
+             return {"status": "Error", "msg": "Data corrupt"}
+            
+        if requester_profile.get("role") != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized: Bukan Super Admin"}
+
+        # 3. Hapus dari Auth
+        admin_client.auth.admin.delete_user(target_id)
+        
+        # 4. Hapus Profile Manual (Safe Execute)
+        try:
+            admin_client.table("profiles").delete().eq("id", target_id).execute()
+        except:
+            pass # Ignore jika sudah terhapus cascade
+        
+        # 5. Audit Log
+        admin_client.table("audit_logs").insert({
+            "user_email": requester_email,
+            "action": "DELETE_USER",
+            "details": f"Menghapus User ID: {target_id}"
+        }).execute()
+
+        return {"status": "Sukses", "msg": "User berhasil dihapus permanent."}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+    
+# ==========================================
+# 9. MASTER DATA (ULTG & GI) - PYLANCE FIXED
+# ==========================================
+
+class MasterUltgInput(BaseModel):
+    nama_ultg: str
+    requester_email: str
+
+class MasterGiInput(BaseModel):
+    nama_gi: str
+    nama_ultg: str
+    lat: float = 0.0 
+    lon: float = 0.0 
+    requester_email: str
+
+# --- A. GET HIERARCHY ---
+@app.get("/master/hierarchy")
+def get_master_hierarchy():
+    # Pylance Guard: Pastikan client ada
+    client = supabase
+    if client is None: return {}
+
+    try:
+        # Ambil nama, lat, lon dari GI
+        res = client.table("master_ultg").select("nama_ultg, master_gi(nama_gi, lat, lon)").execute()
+        
+        # Pylance Guard: Pastikan data adalah list
+        rows = res.data
+        if not isinstance(rows, list): return {}
+
+        mapping = {}
+        for item in rows:
+            if not isinstance(item, dict): continue # Skip jika format aneh
+            
+            ultg = item.get('nama_ultg', 'Unknown')
+            
+            # Ambil GI (bisa list, bisa None)
+            gi_list = item.get('master_gi', [])
+            if not isinstance(gi_list, list): gi_list = []
+
+            gis = []
+            for g in gi_list:
+                if isinstance(g, dict):
+                    gis.append({
+                        "name": g.get('nama_gi', 'Unknown'), 
+                        "lat": g.get('lat', 0.0), 
+                        "lon": g.get('lon', 0.0)
+                    })
+            
+            mapping[ultg] = gis
+            
+        return mapping
+    except Exception as e:
+        print(f"Error fetching hierarchy: {e}")
+        return {}
+
+# --- B. ADD ULTG ---
+@app.post("/admin/master/add-ultg")
+def add_master_ultg(data: MasterUltgInput):
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        # Validasi Super Admin
+        check = public_client.table("profiles").select("role").eq("email", data.requester_email).execute()
+        
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        # Safe Access
+        if isinstance(rows[0], dict) and rows[0].get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized"}
+
+        admin_client.table("master_ultg").insert({"nama_ultg": data.nama_ultg}).execute()
+        return {"status": "Sukses", "msg": f"ULTG {data.nama_ultg} berhasil ditambahkan"}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+# --- C. DELETE ULTG ---
+@app.delete("/admin/master/delete-ultg/{nama_ultg}")
+def delete_master_ultg(nama_ultg: str, requester_email: str):
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        check = public_client.table("profiles").select("role").eq("email", requester_email).execute()
+        
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+            
+        if isinstance(rows[0], dict) and rows[0].get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized"}
+
+        admin_client.table("master_ultg").delete().eq("nama_ultg", nama_ultg).execute()
+        return {"status": "Sukses", "msg": f"ULTG {nama_ultg} dihapus."}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+# --- D. ADD GI ---
+@app.post("/admin/master/add-gi")
+def add_master_gi(data: MasterGiInput):
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        check = public_client.table("profiles").select("role").eq("email", data.requester_email).execute()
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        if isinstance(rows[0], dict) and rows[0].get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized"}
+
+        # Cari ID ULTG
+        ultg_res = public_client.table("master_ultg").select("id").eq("nama_ultg", data.nama_ultg).execute()
+        
+        ultg_rows = ultg_res.data
+        if not isinstance(ultg_rows, list) or len(ultg_rows) == 0:
+            return {"status": "Gagal", "msg": "ULTG tidak ditemukan"}
+        
+        # Safe Access ID
+        if not isinstance(ultg_rows[0], dict): return {"status": "Error", "msg": "Data ULTG corrupt"}
+        ultg_id = ultg_rows[0].get('id')
+
+        # Insert GI
+        admin_client.table("master_gi").insert({
+            "nama_gi": data.nama_gi,
+            "id_ultg": ultg_id,
+            "lat": data.lat,
+            "lon": data.lon
+        }).execute()
+        
+        return {"status": "Sukses", "msg": f"{data.nama_gi} ditambahkan"}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+# --- E. DELETE GI ---
+@app.delete("/admin/master/delete-gi")
+def delete_master_gi(nama_gi: str, nama_ultg: str, requester_email: str):
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        check = public_client.table("profiles").select("role").eq("email", requester_email).execute()
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0: return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        if isinstance(rows[0], dict) and rows[0].get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized"}
+
+        ultg_res = public_client.table("master_ultg").select("id").eq("nama_ultg", nama_ultg).execute()
+        ultg_rows = ultg_res.data
+        if not isinstance(ultg_rows, list) or len(ultg_rows) == 0: return {"status": "Gagal", "msg": "ULTG 404"}
+        
+        if not isinstance(ultg_rows[0], dict): return {"status": "Error", "msg": "Data ULTG corrupt"}
+        ultg_id = ultg_rows[0].get('id')
+
+        admin_client.table("master_gi").delete().match({"nama_gi": nama_gi, "id_ultg": ultg_id}).execute()
+        return {"status": "Sukses", "msg": "GI berhasil dihapus"}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}

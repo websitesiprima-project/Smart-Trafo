@@ -38,44 +38,86 @@ const GAS_CONFIG = [
   { key: "CO2", color: "#06b6d4", type: "line", dash: "3 3" },
 ];
 
-const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
+const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
   const [selectedGI, setSelectedGI] = useState("");
   const [selectedTrafo, setSelectedTrafo] = useState("");
 
   // State Data
-  const [masterAssets, setMasterAssets] = useState([]);
+  const [availableTrafos, setAvailableTrafos] = useState([]);
   const [chartHistory, setChartHistory] = useState([]);
 
   // State Loading
-  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [loadingTrafos, setLoadingTrafos] = useState(false);
   const [loadingChart, setLoadingChart] = useState(false);
 
-  // --- LOGIKA UTAMA: APAKAH DIA SUPER ADMIN? ---
-  const isSuperAdmin = userRole === "super_admin" || !userUnit;
+  const isSuperAdmin = userRole === "super_admin";
 
-  // 🔥 1. AMBIL LIST ASET
+  // --- 1. PROSES LIST GI DARI MAPPING (Sama seperti InputForm) ---
+  const availableGIs = useMemo(() => {
+    let list = [];
+    if (!unitMapping || Object.keys(unitMapping).length === 0) return [];
+
+    if (isSuperAdmin) {
+      // Super Admin: Semua GI
+      Object.values(unitMapping).forEach((giList) => {
+        if (Array.isArray(giList)) {
+          giList.forEach((gi) => {
+            const name = typeof gi === "string" ? gi : gi.name;
+            if (name) list.push(name);
+          });
+        }
+      });
+    } else {
+      // Admin Unit: Filter by Unit Name (Fuzzy Match)
+      const targetUnit = (userUnit || "")
+        .toLowerCase()
+        .replace(/ultg/g, "")
+        .trim();
+      const foundKey = Object.keys(unitMapping).find((key) => {
+        const cleanKey = key.toLowerCase().replace(/ultg/g, "").trim();
+        return cleanKey.includes(targetUnit) || targetUnit.includes(cleanKey);
+      });
+
+      const unitGis = foundKey ? unitMapping[foundKey] : [];
+      if (Array.isArray(unitGis)) {
+        list = unitGis.map((gi) => (typeof gi === "string" ? gi : gi.name));
+      }
+    }
+    return list.sort();
+  }, [unitMapping, isSuperAdmin, userUnit]);
+
+  // --- 2. FETCH TRAFO SAAT GI DIPILIH ---
   useEffect(() => {
-    const fetchMasterAssets = async () => {
-      setLoadingAssets(true);
+    if (!selectedGI) {
+      setAvailableTrafos([]);
+      return;
+    }
+
+    const fetchTrafos = async () => {
+      setLoadingTrafos(true);
       try {
         const { data, error } = await supabase
           .from("assets_trafo")
-          .select("lokasi_gi, nama_trafo, unit_ultg")
-          .order("lokasi_gi", { ascending: true });
+          .select("nama_trafo")
+          .eq("lokasi_gi", selectedGI)
+          .order("nama_trafo", { ascending: true });
 
         if (error) throw error;
-        setMasterAssets(data || []);
+
+        // Hapus duplikat nama trafo jika ada
+        const uniqueTrafos = [...new Set(data.map((item) => item.nama_trafo))];
+        setAvailableTrafos(uniqueTrafos);
       } catch (err) {
-        console.error("Gagal memuat aset:", err);
+        console.error("Gagal load trafo:", err);
       } finally {
-        setLoadingAssets(false);
+        setLoadingTrafos(false);
       }
     };
 
-    fetchMasterAssets();
-  }, []);
+    fetchTrafos();
+  }, [selectedGI]);
 
-  // 🔥 2. AMBIL DATA GRAFIK
+  // --- 3. AMBIL DATA GRAFIK SAAT TRAFO DIPILIH ---
   useEffect(() => {
     if (!selectedGI || !selectedTrafo) {
       setChartHistory([]);
@@ -83,7 +125,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
     }
 
     const fetchChartData = async () => {
-      setLoadingChart(true); // Mulai Loading
+      setLoadingChart(true);
       try {
         const { data, error } = await supabase
           .from("riwayat_uji")
@@ -97,47 +139,12 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
       } catch (err) {
         console.error("Gagal memuat data grafik:", err);
       } finally {
-        setLoadingChart(false); // Selesai Loading
+        setLoadingChart(false);
       }
     };
 
     fetchChartData();
   }, [selectedGI, selectedTrafo]);
-
-  // --- FILTER DROPDOWN GI ---
-  const availableGIs = useMemo(() => {
-    let filtered = masterAssets;
-    if (!isSuperAdmin && userUnit) {
-      filtered = masterAssets.filter(
-        (a) => a.unit_ultg?.toLowerCase() === userUnit.toLowerCase(),
-      );
-    }
-    return [...new Set(filtered.map((a) => a.lokasi_gi))].sort();
-  }, [masterAssets, isSuperAdmin, userUnit]);
-
-  // --- FILTER DROPDOWN TRAFO ---
-  const availableTrafos = useMemo(() => {
-    if (!selectedGI) return [];
-    const trafos = masterAssets
-      .filter((a) => a.lokasi_gi === selectedGI)
-      .map((a) => a.nama_trafo);
-
-    return [...new Set(trafos)].sort((a, b) => {
-      const aName = a || "";
-      const bName = b || "";
-      const aMatch = aName.match(/^([A-Z]+)\s*#?(\d+)$/i);
-      const bMatch = bName.match(/^([A-Z]+)\s*#?(\d+)$/i);
-      if (!aMatch || !bMatch) return aName.localeCompare(bName);
-      return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
-    });
-  }, [selectedGI, masterAssets]);
-
-  // Auto-Select GI Pertama
-  useEffect(() => {
-    if (availableGIs.length > 0 && !selectedGI) {
-      setSelectedGI(availableGIs[0]);
-    }
-  }, [availableGIs]);
 
   // --- OLAH DATA UNTUK RECHARTS ---
   const processedData = useMemo(() => {
@@ -156,8 +163,8 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
       C2H2: Number(d.c2h2 || 0),
       CO: Number(d.co || 0),
       CO2: Number(d.co2 || 0),
-      TDCG: d.tdcg_value
-        ? Number(d.tdcg_value)
+      TDCG: d.tdcg
+        ? Number(d.tdcg)
         : Number(d.h2) +
           Number(d.ch4) +
           Number(d.c2h6) +
@@ -177,6 +184,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
     CO: false,
     CO2: false,
   });
+
   const toggleSeries = (key) =>
     setActiveSeries((p) => ({ ...p, [key]: !p[key] }));
 
@@ -231,21 +239,22 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
                   setSelectedGI(e.target.value);
                   setSelectedTrafo("");
                 }}
-                disabled={loadingAssets}
                 className={`w-full p-3 pl-10 rounded-lg border text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
                   isDarkMode
                     ? "bg-slate-900 border-slate-600 text-white"
                     : "bg-gray-50 border-gray-300 text-gray-800"
                 }`}
               >
-                <option value="">
-                  {loadingAssets ? "Memuat..." : "-- Pilih GI --"}
-                </option>
-                {availableGIs.map((gi) => (
-                  <option key={gi} value={gi}>
-                    {gi}
-                  </option>
-                ))}
+                <option value="">-- Pilih GI --</option>
+                {availableGIs.length === 0 ? (
+                  <option disabled>Tidak ada data GI</option>
+                ) : (
+                  availableGIs.map((gi) => (
+                    <option key={gi} value={gi}>
+                      {gi}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>
@@ -260,14 +269,16 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
               <select
                 value={selectedTrafo}
                 onChange={(e) => setSelectedTrafo(e.target.value)}
-                disabled={!selectedGI || loadingAssets}
+                disabled={!selectedGI || loadingTrafos}
                 className={`w-full p-3 pl-10 rounded-lg border text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all ${
                   isDarkMode
-                    ? "bg-slate-900 border-slate-600 text-white"
-                    : "bg-gray-50 border-gray-300 text-gray-800"
+                    ? "bg-slate-900 border-slate-600 text-white disabled:bg-slate-800 disabled:text-slate-500"
+                    : "bg-gray-50 border-gray-300 text-gray-800 disabled:bg-gray-100 disabled:text-gray-400"
                 }`}
               >
-                <option value="">-- Pilih Trafo --</option>
+                <option value="">
+                  {loadingTrafos ? "Memuat..." : "-- Pilih Trafo --"}
+                </option>
                 {availableTrafos.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -286,11 +297,15 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
                   : "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200"
               }`}
             >
-              <div className={`p-3 rounded-lg ${isDarkMode ? "bg-blue-600/30" : "bg-blue-500/10"}`}>
+              <div
+                className={`p-3 rounded-lg ${isDarkMode ? "bg-blue-600/30" : "bg-blue-500/10"}`}
+              >
                 <FileBarChart className="text-blue-500" size={24} />
               </div>
               <div className="flex-1">
-                <span className={`text-xs font-bold uppercase tracking-wide ${textSub}`}>
+                <span
+                  className={`text-xs font-bold uppercase tracking-wide ${textSub}`}
+                >
                   Total Data Uji
                 </span>
                 <div className={`text-2xl font-black ${textMain}`}>
@@ -299,7 +314,9 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
                   ) : (
                     <span className="flex items-baseline gap-1">
                       {processedData.length}
-                      <span className={`text-sm font-medium ${textSub}`}>record</span>
+                      <span className={`text-sm font-medium ${textSub}`}>
+                        record
+                      </span>
                     </span>
                   )}
                 </div>
@@ -311,7 +328,6 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit }) => {
 
       {/* --- BAGIAN UTAMA (GRAFIK) --- */}
       {selectedGI && selectedTrafo ? (
-        // 🔥 LOGIKA BARU: Cek Loading dulu, baru cek Data
         loadingChart ? (
           <div
             className={`flex flex-col items-center justify-center py-24 rounded-xl border-2 border-dashed ${isDarkMode ? "border-slate-700" : "border-gray-300"}`}

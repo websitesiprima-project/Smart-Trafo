@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Users,
+  Map as MapIcon,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
@@ -24,9 +26,15 @@ import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import VoltyMascot from "./components/VoltyMascot";
 import ThemeToggle from "./components/ThemeToggle";
-// 🔥 IMPORT HOOK AUTO LOGOUT
 import useAutoLogout from "./hooks/useAutoLogout";
 
+// Lazy Load Pages
+const UserManagementPage = lazy(
+  () => import("./components/UserManagementPage"),
+);
+const UnitManagementPage = lazy(
+  () => import("./components/UnitManagementPage"),
+);
 const DashboardPage = lazy(() => import("./components/DashboardPage"));
 const InputFormPage = lazy(() => import("./components/InputFormPage"));
 const TrendingPage = lazy(() => import("./components/TrendingPage"));
@@ -37,83 +45,18 @@ const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
 const API_URL = "http://127.0.0.1:8000";
 
-// 🔥 MAPPING GLOBAL (Agar tidak duplikat & konsisten)
-const UNIT_GI_MAPPING = {
-  Lopana: [
-    "GI Lopana",
-    "GI Amurang",
-    "GI Kawangkoan",
-    "PLTP Lahendong",
-    "GI Tomohon",
-    "GI Tasikria",
-    "GI Tonsealama",
-    "GI Sawangan",
-    "PLTA Tanggari",
-  ],
-  Sawangan: [
-    "GI Teling",
-    "GIS Teling",
-    "GIS Sario",
-    "GI Bitung",
-    "GI Likupang",
-    "GI Paniki",
-    "GI Tanjung Merah",
-    "GI Ranomuut",
-    "GI Kema",
-    "GI Pandu",
-    "GI MSM",
-  ],
-  Kotamobagu: [
-    "GI Kotamobagu",
-    "GI Lolak",
-    "GI Otam",
-    "PLTU SULUT",
-    "GI Tutuyan",
-    "GI Molibagu",
-  ],
-  Gorontalo: [
-    "GI Gorontalo",
-    "GI Isimu",
-    "GI Marisa",
-    "GI Botupingge",
-    "GI Kwandang",
-    "GI Boroko",
-    "GI Anggrek",
-    "GI Tolinggula",
-    "GI Tilamuta",
-    "PLTG Maleo",
-    "PT BJA",
-  ],
-};
-
-const getAccessByEmail = (email) => {
-  const normalizedEmail = email?.toLowerCase().trim() || "";
-  if (normalizedEmail === "superadminupt@gmail.com")
-    return { role: "super_admin", unit: null };
-  if (normalizedEmail === "ultgsawangan@gmail.com")
-    return { role: "admin_unit", unit: "Sawangan" };
-  if (normalizedEmail === "ultglopana@gmail.com")
-    return { role: "admin_unit", unit: "Lopana" };
-  if (normalizedEmail === "ultgkotamobagu@gmail.com")
-    return { role: "admin_unit", unit: "Kotamobagu" };
-  if (normalizedEmail === "ultggorontalo@gmail.com")
-    return { role: "admin_unit", unit: "Gorontalo" };
-  return { role: "viewer", unit: null };
-};
-
 export default function Home() {
   const [session, setSession] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
-
-  // State User
   const [userRole, setUserRole] = useState(null);
   const [userUnit, setUserUnit] = useState(null);
-
-  // State UI
   const [showLogin, setShowLogin] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // State Mapping Dinamis
+  const [unitGiMapping, setUnitGiMapping] = useState({});
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem("pln-smart-trafo-darkmode");
@@ -127,7 +70,6 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [guideTab, setGuideTab] = useState("ieee");
 
-  // Persist settings
   useEffect(() => {
     localStorage.setItem("pln-smart-trafo-activepage", activePage);
   }, [activePage]);
@@ -138,7 +80,6 @@ export default function Home() {
     );
   }, [isDarkMode]);
 
-  // Data State
   const [formData, setFormData] = useState({
     no_dokumen: "-",
     merk_trafo: "",
@@ -165,45 +106,94 @@ export default function Home() {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // --- AUTH LOGIC ---
+  // --- FETCH MAPPING DINAMIS ---
+  useEffect(() => {
+    const loadMapping = async () => {
+      try {
+        const res = await fetch(`${API_URL}/master/hierarchy`);
+        // Jika backend mati, jangan throw error yang memblokir UI
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Object.keys(data).length > 0) setUnitGiMapping(data);
+      } catch (e) {
+        console.warn("Backend offline/error:", e);
+      }
+    };
+    loadMapping();
+  }, []);
+
+  // --- FUNGSI CEK PROFILE ---
+  const fetchUserProfile = async (userId) => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role, unit_ultg")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (data) {
+        setUserRole(data.role);
+        setUserUnit(data.unit_ultg);
+      } else {
+        setUserRole("viewer");
+        setUserUnit(null);
+      }
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+      setUserRole("viewer");
+    }
+  };
+
+  // --- 🔥 AUTH LOGIC: ANTI-STUCK VERSION ---
   useEffect(() => {
     let mounted = true;
-    const initAuth = async () => {
-      const {
-        data: { session: currentSession },
-      } = await supabase.auth.getSession();
-      if (mounted && currentSession) {
-        setSession(currentSession);
-        const access = getAccessByEmail(currentSession.user.email);
-        setUserRole(access.role);
-        setUserUnit(access.unit);
-      }
-      if (mounted) setAuthChecking(false);
-    };
-    initAuth();
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (mounted) {
-        setSession(newSession);
-        if (newSession) {
-          const access = getAccessByEmail(newSession.user.email);
-          setUserRole(access.role);
-          setUserUnit(access.unit);
+
+    // 1. Fungsi Handler Utama untuk Sesi
+    const handleSession = async (currentSession) => {
+      try {
+        if (currentSession) {
+          setSession(currentSession);
+          await fetchUserProfile(currentSession.user.id);
         } else {
+          setSession(null);
           setUserRole(null);
           setUserUnit(null);
         }
+      } catch (error) {
+        console.error("Auth Error:", error);
+      } finally {
+        if (mounted) setAuthChecking(false);
+      }
+    };
+
+    // 2. Cek Sesi Saat Ini (Initial Load/Refresh)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
+    });
+
+    // 3. Listener Perubahan Auth (Login/Logout)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSession(session);
+    });
+
+    // 4. 🔥 SAFETY TIMEOUT: Paksa stop loading setelah 5 detik jika macet
+    const safetyTimer = setTimeout(() => {
+      if (authChecking && mounted) {
+        console.warn("Auth check timed out, forcing render.");
         setAuthChecking(false);
       }
-    });
+    }, 5000);
+
     return () => {
       mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
-  // --- SYNC DATA ---
+  // --- FETCH HISTORY ---
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -215,10 +205,9 @@ export default function Home() {
       const { data, error } = await query;
       if (error) throw error;
       setHistoryData(data || []);
-      console.log(`✅ Data riwayat dimuat: ${data?.length || 0} records`);
     } catch (error) {
-      console.error(error);
-      toast.error("Gagal sinkronisasi data.");
+      console.error("History fetch error:", error);
+      // Jangan tampilkan toast error saat refresh pertama kali agar tidak mengganggu
     } finally {
       setLoadingHistory(false);
     }
@@ -243,13 +232,20 @@ export default function Home() {
     };
   }, [session]);
 
-  // --- LOGOUT HANDLER ---
   const handleLogout = async () => {
     setShowLogoutModal(false);
     setIsLoggingOut(true);
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // Animasi 3 detik
-    await supabase.auth.signOut();
-    localStorage.removeItem("pln-smart-trafo-auth");
+
+    // Animasi logout sebentar
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    try {
+      await supabase.auth.signOut();
+      localStorage.removeItem("pln-smart-trafo-auth");
+    } catch (e) {
+      console.error("Logout err", e);
+    }
+
     setSession(null);
     setUserRole(null);
     setUserUnit(null);
@@ -259,15 +255,13 @@ export default function Home() {
     toast.success("Berhasil keluar.");
   };
 
-  // 🔥 IMPLEMENTASI AUTO LOGOUT (15 Menit = 900.000 ms) 🔥
   useAutoLogout(() => {
     if (session) {
       toast.warning("Sesi berakhir karena tidak ada aktivitas.");
       handleLogout();
     }
-  }, 60000);
+  }, 900000);
 
-  // --- DELETE HISTORY ---
   const handleDeleteAllHistory = () => setShowDeleteAllModal(true);
   const confirmDeleteAll = async () => {
     setLoadingHistory(true);
@@ -293,35 +287,41 @@ export default function Home() {
     });
   };
 
-  // --- FIND UNIT (GLOBAL MAPPING) ---
   const findUnitByGI = (giName) => {
     const search = (giName || "").toUpperCase();
-    for (const [unit, list] of Object.entries(UNIT_GI_MAPPING)) {
-      if (list.some((g) => search.includes(g.toUpperCase().replace("GI ", ""))))
-        return unit;
+    for (const [unit, list] of Object.entries(unitGiMapping)) {
+      if (Array.isArray(list)) {
+        if (
+          list.some((g) => {
+            const gName = (typeof g === "string" ? g : g.name).toUpperCase();
+            return search.includes(gName.replace("GI ", ""));
+          })
+        )
+          return unit;
+      }
     }
     return userUnit || "Lainnya";
   };
 
-  // --- SUBMIT HANDLER (ANTI DOUBLE CLICK) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return; // 🔒 Cegah klik ganda
+    if (loading) return;
 
     if (!formData.lokasi_gi || !formData.nama_trafo)
       return toast.error("Harap isi Lokasi GI & Nama Trafo!");
 
     if (userRole !== "super_admin" && userUnit) {
-      const allowedGIs = UNIT_GI_MAPPING[userUnit] || [];
-      const inputGI = (formData.lokasi_gi || "").trim();
-      const isAllowed = allowedGIs.some(
-        (allowed) =>
-          inputGI.toLowerCase().includes(allowed.toLowerCase()) ||
-          allowed.toLowerCase().includes(inputGI.toLowerCase()),
-      );
-      if (!isAllowed) {
+      const allowedGIs = unitGiMapping[userUnit] || [];
+      const inputGI = (formData.lokasi_gi || "").trim().toLowerCase();
+
+      const isAllowed = allowedGIs.some((gi) => {
+        const giName = (typeof gi === "string" ? gi : gi.name).toLowerCase();
+        return inputGI.includes(giName) || giName.includes(inputGI);
+      });
+
+      if (!isAllowed && Object.keys(unitGiMapping).length > 0) {
         return toast.error(
-          `⛔ Akses Ditolak: GI "${inputGI}" bukan bagian dari ULTG ${userUnit}.`,
+          `⛔ Akses Ditolak: GI "${formData.lokasi_gi}" bukan bagian dari ULTG ${userUnit}.`,
           { duration: 5000 },
         );
       }
@@ -355,7 +355,6 @@ export default function Home() {
         created_at: new Date().toISOString(),
       };
 
-      // Simpan data (Hanya Frontend yang melakukan ini)
       const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
       if (error) throw error;
 
@@ -375,7 +374,6 @@ export default function Home() {
     if (options.guideTab) setGuideTab(options.guideTab);
   };
 
-  // --- RENDER ---
   if (authChecking) return <LoadingScreen />;
 
   if (isLoggingOut) {
@@ -432,7 +430,7 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* MODALS */}
+      {/* MODAL LOGOUT & DELETE */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
@@ -488,7 +486,7 @@ export default function Home() {
         onClose={() => setActiveField(null)}
       />
 
-      {/* HEADER */}
+      {/* HEADER & SIDEBAR */}
       <header
         className={`fixed top-0 z-30 w-full h-16 px-4 flex items-center justify-between shadow-sm backdrop-blur-md ${isDarkMode ? "bg-slate-900/80" : "bg-white/80"}`}
       >
@@ -518,7 +516,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* SIDEBAR */}
       <div
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}
         onClick={() => setIsSidebarOpen(false)}
@@ -584,6 +581,20 @@ export default function Home() {
                 onClick={() => navigateTo("super_admin")}
                 isDarkMode={isDarkMode}
               />
+              <MenuButton
+                icon={<Users size={20} className="text-blue-500" />}
+                label="Manajemen User"
+                active={activePage === "user_management"}
+                onClick={() => navigateTo("user_management")}
+                isDarkMode={isDarkMode}
+              />
+              <MenuButton
+                icon={<MapIcon size={20} className="text-green-500" />}
+                label="Manajemen Unit"
+                active={activePage === "unit_management"}
+                onClick={() => navigateTo("unit_management")}
+                isDarkMode={isDarkMode}
+              />
             </div>
           )}
         </nav>
@@ -598,7 +609,7 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* CONTENT */}
+      {/* MAIN CONTENT */}
       <main
         className={`pt-20 pb-10 w-full min-h-screen transition-all duration-300 ${activePage === "super_admin" ? "px-0" : "px-4 md:px-6"}`}
       >
@@ -611,6 +622,7 @@ export default function Home() {
                   liveData={historyData}
                   userRole={userRole}
                   userUnit={userUnit}
+                  unitMapping={unitGiMapping}
                 />
               </PageTransition>
             )}
@@ -626,6 +638,7 @@ export default function Home() {
                   isLoading={loading}
                   userRole={userRole}
                   userUnit={userUnit}
+                  unitMapping={unitGiMapping}
                 />
               </PageTransition>
             )}
@@ -636,6 +649,7 @@ export default function Home() {
                   liveData={historyData}
                   userRole={userRole}
                   userUnit={userUnit}
+                  unitMapping={unitGiMapping}
                 />
               </PageTransition>
             )}
@@ -663,6 +677,20 @@ export default function Home() {
             {activePage === "super_admin" && userRole === "super_admin" && (
               <PageTransition key="admin">
                 <SuperAdminPage session={session} isDarkMode={isDarkMode} />
+              </PageTransition>
+            )}
+            {activePage === "user_management" && userRole === "super_admin" && (
+              <PageTransition key="users">
+                <UserManagementPage session={session} isDarkMode={isDarkMode} />
+              </PageTransition>
+            )}
+            {activePage === "unit_management" && userRole === "super_admin" && (
+              <PageTransition key="units">
+                <UnitManagementPage
+                  session={session}
+                  isDarkMode={isDarkMode}
+                  onUpdateMapping={setUnitGiMapping}
+                />
               </PageTransition>
             )}
           </AnimatePresence>

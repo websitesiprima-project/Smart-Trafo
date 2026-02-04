@@ -4,8 +4,6 @@ import React, { useMemo, useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-// 🔥 IMPOR DATA ASET LENGKAP
-import { allGIs } from "../data/assetData";
 import { supabase } from "../lib/supabaseClient";
 import {
   Map as MapIcon,
@@ -77,20 +75,22 @@ const formatDate = (dateString) => {
   return isNaN(date.getTime())
     ? ""
     : date.toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
 };
 
-const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
+// 🔥 TERIMA PROP unitMapping DARI APP.JSX
+const DashboardPage = ({
+  isDarkMode,
+  liveData = [],
+  userRole,
+  userUnit,
+  unitMapping = {},
+}) => {
   const safeLiveData = Array.isArray(liveData) ? liveData : [];
   const [selectedTrafo, setSelectedTrafo] = useState(null);
-
-  // 🔥 DEBUG: Log data yang diterima dashboard
-  useEffect(() => {
-    console.log(`📊 Dashboard menerima ${safeLiveData.length} records dari liveData`);
-  }, [safeLiveData.length]);
 
   const [activeSeries, setActiveSeries] = useState(
     GAS_CONFIG.reduce((acc, gas) => {
@@ -102,10 +102,39 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
   const toggleSeries = (key) =>
     setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // 🔥 STATE UNTUK TOTAL ASET DARI DATABASE
   const [totalDbAssets, setTotalDbAssets] = useState(0);
 
-  // 🔥 FETCH TOTAL ASET DARI SUPABASE
+  // --- 1. PROSES DATA GI DARI MAPPING DB (GLOBAL ACCESS) ---
+  const dynamicGIs = useMemo(() => {
+    let list = [];
+    if (!unitMapping || Object.keys(unitMapping).length === 0) return [];
+
+    Object.entries(unitMapping).forEach(([ultgName, gis]) => {
+      // 🔥 FILTER DIHAPUS: Semua user (termasuk ULTG Barat) bisa melihat SEMUA aset
+      if (Array.isArray(gis)) {
+        const enrichedGIs = gis.map((gi) => {
+          // Cek koordinat, jika 0 atau null, pakai default (Manado Center) agar Pin tetap muncul
+          let lat = parseFloat(gi.lat || 0);
+          let lon = parseFloat(gi.lon || gi.lng || 0);
+
+          const isInvalid = lat === 0 && lon === 0;
+
+          return {
+            ...gi,
+            ultg: ultgName,
+            lat: isInvalid ? 1.45 : lat,
+            lon: isInvalid ? 124.84 : lon,
+            isDefault: isInvalid,
+          };
+        });
+
+        list = [...list, ...enrichedGIs];
+      }
+    });
+    return list;
+  }, [unitMapping]); // Hapus dependency userRole/userUnit agar tidak ter-filter
+
+  // --- FETCH TOTAL ASET DARI SUPABASE ---
   useEffect(() => {
     const fetchTotalAssets = async () => {
       try {
@@ -129,29 +158,78 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
     };
   }, [selectedTrafo]);
 
-  // --- FUNGSI NORMALISASI NAMA ---
   const normalizeName = (name) => {
     if (!name) return "";
     return name.toString().toUpperCase().trim().replace(/\s+/g, " ");
   };
 
-  // --- LOGIC 1: GLOBAL STATS & RANKING ---
-  const topTrafos = useMemo(() => {
-    if (safeLiveData.length === 0) return [];
-    const map = new Map();
+  // --- LOGIC 1: GLOBAL STATS (FIX: HITUNG ASET UNIK SAJA) ---
+  const globalStats = useMemo(() => {
+    // 1. Grouping berdasarkan Trafo Unik (Ambil data tanggal terbaru saja)
+    const uniqueAssetsMap = new Map();
 
-    safeLiveData.forEach((item) => {
-      const key = `${normalizeName(item.lokasi_gi)}-${normalizeName(
-        item.nama_trafo,
-      )}`;
-      const currentTdcg = parseFloat(item.tdcg) || 0;
+    safeLiveData.forEach((record) => {
+      const key = `${normalizeName(record.lokasi_gi)}-${normalizeName(record.nama_trafo)}`;
+      const existingRecord = uniqueAssetsMap.get(key);
+      const currentRecordDate = new Date(record.tanggal_sampling);
+      const existingRecordDate = existingRecord
+        ? new Date(existingRecord.tanggal_sampling)
+        : new Date(0);
 
-      if (!map.has(key) || currentTdcg > (parseFloat(map.get(key).tdcg) || 0)) {
-        map.set(key, item);
+      if (!existingRecord || currentRecordDate > existingRecordDate) {
+        uniqueAssetsMap.set(key, record);
       }
     });
 
-    return Array.from(map.values())
+    let normal = 0,
+      waspada = 0,
+      kritis = 0,
+      totalGas = 0;
+    const uniqueRecords = Array.from(uniqueAssetsMap.values());
+
+    uniqueRecords.forEach((d) => {
+      const s = (d.status_ieee || "").toUpperCase();
+      const gas = parseFloat(d.tdcg) || 0;
+      totalGas += gas;
+
+      if (s.includes("KRITIS") || s.includes("COND 3")) kritis++;
+      else if (s.includes("WASPADA") || s.includes("COND 2")) waspada++;
+      else normal++;
+    });
+
+    const totalUniqueAssets = uniqueRecords.length;
+
+    return {
+      pieData: [
+        { name: "Normal", value: normal },
+        { name: "Waspada", value: waspada },
+        { name: "Kritis", value: kritis },
+      ],
+      avgTdcg:
+        totalUniqueAssets > 0 ? (totalGas / totalUniqueAssets).toFixed(0) : 0,
+      totalAssets: totalUniqueAssets,
+    };
+  }, [safeLiveData]);
+
+  // --- LOGIC 2: TOP RANKING (MENGGUNAKAN LOGIC UNIK JUGA) ---
+  const topTrafos = useMemo(() => {
+    if (safeLiveData.length === 0) return [];
+
+    const uniqueAssetsMap = new Map();
+    safeLiveData.forEach((item) => {
+      const key = `${normalizeName(item.lokasi_gi)}-${normalizeName(item.nama_trafo)}`;
+      const existingRecord = uniqueAssetsMap.get(key);
+      const currentTdcg = parseFloat(item.tdcg) || 0;
+
+      if (
+        !existingRecord ||
+        currentTdcg > (parseFloat(existingRecord.tdcg) || 0)
+      ) {
+        uniqueAssetsMap.set(key, item);
+      }
+    });
+
+    return Array.from(uniqueAssetsMap.values())
       .map((item) => ({
         gi: item.lokasi_gi,
         unit: item.nama_trafo,
@@ -164,40 +242,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       .slice(0, 5);
   }, [safeLiveData]);
 
-  // 🔥 FIXED: Hitung SEMUA records, bukan hanya trafo unik
-  const globalStats = useMemo(() => {
-    let normal = 0,
-      waspada = 0,
-      kritis = 0,
-      totalGas = 0;
-
-    // Hitung semua data riwayat (198 records = 198 data)
-    safeLiveData.forEach((d) => {
-      const s = (d.status_ieee || "").toUpperCase();
-      const gas = parseFloat(d.tdcg) || 0;
-      totalGas += gas;
-      
-      if (s.includes("KRITIS") || s.includes("COND 3")) kritis++;
-      else if (s.includes("WASPADA") || s.includes("COND 2")) waspada++;
-      else normal++;
-    });
-
-    const total = safeLiveData.length;
-    console.log(`📈 Distribusi Kondisi: ${total} data total`);
-    console.log(`   → Normal: ${normal}, Waspada: ${waspada}, Kritis: ${kritis}`);
-
-    return {
-      pieData: [
-        { name: "Normal", value: normal },
-        { name: "Waspada", value: waspada },
-        { name: "Kritis", value: kritis },
-      ],
-      avgTdcg: total > 0 ? (totalGas / total).toFixed(0) : 0,
-      totalAssets: total,
-    };
-  }, [safeLiveData]);
-
-  // --- LOGIC 2: CHART DATA (MODAL) ---
+  // --- LOGIC 3: CHART DATA (MODAL) ---
   const chartData = useMemo(() => {
     if (!selectedTrafo) return [];
     return safeLiveData
@@ -222,10 +267,9 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       .sort((a, b) => new Date(a.dateOriginal) - new Date(b.dateOriginal));
   }, [selectedTrafo, safeLiveData]);
 
-  // --- LOGIC 3: FILTER LIST TRAFO BERDASARKAN GI YANG DIKLIK (POPUP) ---
+  // --- LOGIC 4: FILTER LIST TRAFO DI POPUP MAP ---
   const getTrafoListByGI = (giName) => {
     if (!safeLiveData.length || !giName) return [];
-
     const targetGI = normalizeName(giName);
 
     const records = safeLiveData.filter(
@@ -235,7 +279,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
     const uniqueMap = new Map();
     records.forEach((rec) => {
       const unitName = normalizeName(rec.nama_trafo);
-      if (!uniqueMap.has(unitName) || rec.id > uniqueMap.get(unitName).id) {
+      const currentRecDate = new Date(rec.tanggal_sampling);
+      const savedRec = uniqueMap.get(unitName);
+
+      if (!savedRec || currentRecDate > new Date(savedRec.tanggal_sampling)) {
         uniqueMap.set(unitName, rec);
       }
     });
@@ -265,14 +312,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
   const BOUNDS_PADDING_FACTOR = 0.25;
 
   const mapBounds = useMemo(() => {
-    if (!Array.isArray(allGIs) || allGIs.length === 0) return null;
+    if (!Array.isArray(dynamicGIs) || dynamicGIs.length === 0) return null;
 
-    const lats = allGIs
-      .map((g) => Number(g.lat))
-      .filter((n) => Number.isFinite(n));
-    const lngs = allGIs
-      .map((g) => Number(g.lng))
-      .filter((n) => Number.isFinite(n));
+    const lats = dynamicGIs.map((g) => g.lat).filter((n) => Number.isFinite(n));
+    const lngs = dynamicGIs.map((g) => g.lon).filter((n) => Number.isFinite(n));
 
     if (lats.length === 0 || lngs.length === 0) return null;
 
@@ -281,14 +324,14 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
 
-    const latPad = (maxLat - minLat) * BOUNDS_PADDING_FACTOR || 0.5;
-    const lngPad = (maxLng - minLng) * BOUNDS_PADDING_FACTOR || 0.5;
+    const latPad = (maxLat - minLat) * BOUNDS_PADDING_FACTOR || 0.1;
+    const lngPad = (maxLng - minLng) * BOUNDS_PADDING_FACTOR || 0.1;
 
     return [
       [minLat - latPad, minLng - lngPad],
       [maxLat + latPad, maxLng + lngPad],
     ];
-  }, []);
+  }, [dynamicGIs]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -296,26 +339,9 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
         .leaflet-popup-content-wrapper { border-radius: 10px; padding: 0; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
         .leaflet-popup-content { margin: 0; width: 280px !important; }
         .leaflet-popup-close-button {
-          width: 18px !important;
-          height: 18px !important;
-          font-size: 14px !important;
-          font-weight: bold !important;
-          color: white !important;
-          background: rgba(0,0,0,0.25) !important;
-          border-radius: 50% !important;
-          top: 8px !important;
-          right: 8px !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          padding: 0 !important;
-          line-height: 1 !important;
-          transition: all 0.2s ease !important;
+          width: 18px !important; height: 18px !important; font-size: 14px !important; font-weight: bold !important; color: white !important; background: rgba(0,0,0,0.25) !important; border-radius: 50% !important; top: 8px !important; right: 8px !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 0 !important; line-height: 1 !important; transition: all 0.2s ease !important;
         }
-        .leaflet-popup-close-button:hover {
-          background: rgba(255,255,255,0.3) !important;
-          transform: scale(1.1) !important;
-        }
+        .leaflet-popup-close-button:hover { background: rgba(255,255,255,0.3) !important; transform: scale(1.1) !important; }
         .custom-popup-scroll::-webkit-scrollbar { width: 3px; }
         .custom-popup-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-popup-scroll::-webkit-scrollbar-thumb { background: #bbb; border-radius: 3px; }
@@ -324,13 +350,12 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       {/* HEADER STATS */}
       <div>
         <h2 className={`text-2xl font-bold mb-4 ${textMain}`}>
-          Dashboard {
-            userRole === "super_admin"
-              ? "- UPT Manado"
-              : userUnit
-                ? `- ULTG ${userUnit}`
-                : ""
-          }
+          Dashboard{" "}
+          {userRole === "super_admin"
+            ? "- UPT Manado"
+            : userUnit
+              ? `- ULTG ${userUnit}`
+              : ""}
         </h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div
@@ -341,10 +366,10 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Total GI (Global)
+                Total GI
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
-                {allGIs.length}
+                {dynamicGIs.length}
               </p>
             </div>
           </div>
@@ -397,7 +422,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        {/* KOLOM KIRI: MAP (Lebar 2 Kolom) */}
+        {/* KOLOM KIRI: MAP */}
         <div
           className={`lg:col-span-2 rounded-2xl border shadow-lg overflow-hidden h-[400px] md:h-[550px] lg:h-[650px] relative z-0 ${cardBg}`}
         >
@@ -408,7 +433,6 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             maxZoom={18}
             style={{ height: "100%", width: "100%" }}
             bounds={mapBounds || undefined}
-            maxBounds={mapBounds || undefined}
             maxBoundsViscosity={1}
             scrollWheelZoom={true}
           >
@@ -420,15 +444,13 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               }
             />
-
-            {allGIs.map((gi, idx) => {
+            {dynamicGIs.map((gi, idx) => {
               const trafoList = getTrafoListByGI(gi.name);
               const status = getPinStatus(trafoList);
-
               return (
                 <Marker
                   key={idx}
-                  position={[gi.lat, gi.lng]}
+                  position={[gi.lat, gi.lon]}
                   icon={createCustomIcon(status)}
                 >
                   <Popup
@@ -438,24 +460,21 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   >
                     <div className="font-sans text-gray-800">
                       <div
-                        className={`px-4 py-3 pr-10 text-white flex justify-between items-center ${status.includes("KRITIS")
-                          ? "bg-gradient-to-r from-red-600 to-red-500"
-                          : status.includes("WASPADA")
-                            ? "bg-gradient-to-r from-orange-500 to-amber-500"
-                            : "bg-gradient-to-r from-blue-600 to-blue-500"
-                          }`}
+                        className={`px-4 py-3 pr-10 text-white flex justify-between items-center ${status.includes("KRITIS") ? "bg-gradient-to-r from-red-600 to-red-500" : status.includes("WASPADA") ? "bg-gradient-to-r from-orange-500 to-amber-500" : "bg-gradient-to-r from-blue-600 to-blue-500"}`}
                       >
                         <div className="flex items-center gap-2">
                           <Server size={16} />
-                          <h3 className="font-bold text-sm m-0 uppercase tracking-wide">
-                            {gi.name}
-                          </h3>
+                          <div>
+                            <h3 className="font-bold text-sm m-0 uppercase tracking-wide">
+                              {gi.name}
+                            </h3>
+                            <p className="text-[9px] opacity-90">{gi.ultg}</p>
+                          </div>
                         </div>
                         <span className="text-[10px] bg-white/20 px-2 py-1 rounded font-bold">
                           {trafoList.length} Unit
                         </span>
                       </div>
-
                       <div className="bg-white max-h-[160px] overflow-y-auto custom-popup-scroll">
                         {trafoList.length > 0 ? (
                           trafoList.map((item, i) => (
@@ -468,29 +487,23 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                                 })
                               }
                               className="px-4 py-3 border-b border-gray-100 hover:bg-blue-50 cursor-pointer transition flex justify-between items-center group"
-                          >
-                            <div>
-                              <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600">
-                                {item.nama_trafo}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                TDCG: <span className="font-bold text-gray-700">{Math.round(item.tdcg)} ppm</span>
-                              </p>
-                            </div>
-                              <div className="text-right">
+                            >
+                              <div>
+                                <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600">
+                                  {item.nama_trafo}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  TDCG:{" "}
+                                  <span className="font-bold text-gray-700">
+                                    {Math.round(item.tdcg)} ppm
+                                  </span>
+                                </p>
+                              </div>
                               <span
-                                className={`text-xs px-2 py-1 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") ||
-                                    (item.status_ieee || "").toUpperCase().includes("COND 3")
-                                    ? "bg-red-500 text-white"
-                                    : (item.status_ieee || "").toUpperCase().includes("WASPADA") ||
-                                      (item.status_ieee || "").toUpperCase().includes("COND 2")
-                                      ? "bg-orange-500 text-white"
-                                      : "bg-green-500 text-white"
-                                  }`}
+                                className={`text-xs px-2 py-1 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") || (item.status_ieee || "").toUpperCase().includes("COND 3") ? "bg-red-500 text-white" : (item.status_ieee || "").toUpperCase().includes("WASPADA") || (item.status_ieee || "").toUpperCase().includes("COND 2") ? "bg-orange-500 text-white" : "bg-green-500 text-white"}`}
                               >
                                 {(item.status_ieee || "Normal").split(" ")[0]}
                               </span>
-                            </div>
                             </div>
                           ))
                         ) : (
@@ -505,13 +518,8 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
               );
             })}
           </MapContainer>
-
-          {/* MAP LEGEND */}
           <div
-            className={`absolute bottom-4 left-4 z-[1000] p-4 rounded-xl shadow-lg border ${isDarkMode
-              ? "bg-slate-800/95 border-slate-600"
-              : "bg-white/95 border-slate-200"
-              }`}
+            className={`absolute bottom-4 left-4 z-[1000] p-4 rounded-xl shadow-lg border ${isDarkMode ? "bg-slate-800/95 border-slate-600" : "bg-white/95 border-slate-200"}`}
           >
             <h4
               className={`text-xs font-bold uppercase mb-3 flex items-center gap-2 ${textMain}`}
@@ -521,27 +529,23 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-green-500 shadow-sm"></div>
-                <span className={`text-xs font-medium ${textSub}`}>
-                  Normal - Kondisi Aman
-                </span>
+                <span className={`text-xs font-medium ${textSub}`}>Normal</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-orange-500 shadow-sm"></div>
                 <span className={`text-xs font-medium ${textSub}`}>
-                  Waspada - Perlu Perhatian
+                  Waspada
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded-full bg-red-500 shadow-sm animate-pulse"></div>
-                <span className={`text-xs font-medium ${textSub}`}>
-                  Kritis - Segera Tindak Lanjut
-                </span>
+                <span className={`text-xs font-medium ${textSub}`}>Kritis</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* KOLOM KANAN: SIDE PANEL */}
+        {/* KOLOM KANAN: SIDE PANEL (PIE CHART) */}
         <div className="flex flex-col gap-6 h-[650px]">
           <div
             className={`flex-1 rounded-2xl border shadow-sm p-5 relative flex flex-col items-center justify-center ${cardBg}`}
@@ -549,7 +553,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
             <h3
               className={`absolute top-5 left-5 font-bold text-sm uppercase flex items-center gap-2 ${textMain}`}
             >
-              <PieIcon size={16} /> Distribusi Kondisi
+              <PieIcon size={16} /> Distribusi Kondisi Aset
             </h3>
             <div className="w-full h-full min-h-[180px]">
               <ResponsiveContainer>
@@ -583,25 +587,29 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                 {globalStats.totalAssets}
               </span>
               <span className="text-[10px] font-bold text-gray-400 uppercase">
-                Aset
+                Aset Aktif
               </span>
             </div>
           </div>
 
-          {/* 🔥 MODIFIED SECTION: TOP HIGHEST TDCG (DARK MODE SUPPORT) */}
-          <div className={`flex-[1.5] rounded-2xl border shadow-sm p-0 flex flex-col overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}>
-            {/* Header: Biru PLN */}
-            <div className={`p-4 border-b shadow-sm bg-[#1B7A8F] text-white ${isDarkMode ? "border-slate-600" : "border-gray-100"}`}>
+          {/* Top 5 Highest TDCG */}
+          <div
+            className={`flex-[1.5] rounded-2xl border shadow-sm p-0 flex flex-col overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}
+          >
+            <div
+              className={`p-4 border-b shadow-sm bg-[#1B7A8F] text-white ${isDarkMode ? "border-slate-600" : "border-gray-100"}`}
+            >
               <h3 className="font-bold text-sm flex items-center gap-2">
-                <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />
+                <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />{" "}
                 Top 5 Highest TDCG
               </h3>
             </div>
             <div className="flex-1 overflow-y-auto p-0">
               {topTrafos.length === 0 ? (
-                <div className={`text-center p-8 opacity-50 text-xs flex flex-col items-center gap-2 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}>
-                  <Server size={32} className="opacity-20" />
-                  Data Kosong
+                <div
+                  className={`text-center p-8 opacity-50 text-xs flex flex-col items-center gap-2 ${isDarkMode ? "text-slate-400" : "text-gray-500"}`}
+                >
+                  <Server size={32} className="opacity-20" /> Data Kosong
                 </div>
               ) : (
                 topTrafos.map((item, idx) => (
@@ -614,50 +622,57 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   >
                     <div className="flex justify-between items-center mb-2">
                       <div className="flex items-center gap-3">
-                        {/* Rank Badge: Emas untuk #1, Abu-abu untuk lainnya */}
                         <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${idx === 0
-                            ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30"
-                            : isDarkMode ? "bg-slate-600 text-slate-300" : "bg-gray-100 text-gray-500"
-                            }`}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm ${idx === 0 ? "bg-[#F1C40F] text-white ring-2 ring-[#F1C40F]/30" : isDarkMode ? "bg-slate-600 text-slate-300" : "bg-gray-100 text-gray-500"}`}
                         >
                           {idx + 1}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${isDarkMode ? "bg-[#1B7A8F]/20 text-[#4FC3F7]" : "bg-[#1B7A8F]/10 text-[#1B7A8F]"}`}>
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${isDarkMode ? "bg-[#1B7A8F]/20 text-[#4FC3F7]" : "bg-[#1B7A8F]/10 text-[#1B7A8F]"}`}
+                            >
                               {item.gi}
                             </span>
                           </div>
-                          <p className={`font-bold text-sm mt-0.5 transition-colors ${isDarkMode ? "text-white group-hover:text-[#4FC3F7]" : "text-gray-900 group-hover:text-[#1B7A8F]"}`}>
+                          <p
+                            className={`font-bold text-sm mt-0.5 transition-colors ${isDarkMode ? "text-white group-hover:text-[#4FC3F7]" : "text-gray-900 group-hover:text-[#1B7A8F]"}`}
+                          >
                             {item.unit}
                           </p>
                         </div>
                       </div>
-
                       <div className="text-right">
-                        <p className={`font-black text-lg flex items-center justify-end gap-1 ${isDarkMode ? "text-[#4FC3F7]" : "text-[#1B7A8F]"}`}>
+                        <p
+                          className={`font-black text-lg flex items-center justify-end gap-1 ${isDarkMode ? "text-[#4FC3F7]" : "text-[#1B7A8F]"}`}
+                        >
                           <Flame
                             size={16}
                             className={
                               idx === 0
                                 ? "text-red-500 animate-pulse"
-                                : isDarkMode ? "text-slate-500" : "text-gray-300"
+                                : isDarkMode
+                                  ? "text-slate-500"
+                                  : "text-gray-300"
                             }
                             fill={idx === 0 ? "#ef4444" : "none"}
                           />
                           {item.tdcg.toFixed(0)}
                         </p>
-                        <p className={`text-[10px] ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}>ppm</p>
+                        <p
+                          className={`text-[10px] ${isDarkMode ? "text-slate-500" : "text-gray-400"}`}
+                        >
+                          ppm
+                        </p>
                       </div>
                     </div>
-
-                    {/* Progress Bar: SOLID RED (NO GRADIENT) */}
-                    <div className={`w-full rounded-full h-2 overflow-hidden relative ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}>
+                    <div
+                      className={`w-full rounded-full h-2 overflow-hidden relative ${isDarkMode ? "bg-slate-700" : "bg-gray-100"}`}
+                    >
                       <div
                         className="h-full rounded-full transition-all duration-1000 ease-out bg-red-500"
                         style={{
-                          width: `${Math.min((item.tdcg / 2000) * 100, 100)}%`, // Skala disesuaikan
+                          width: `${Math.min((item.tdcg / 2000) * 100, 100)}%`,
                         }}
                       ></div>
                     </div>
@@ -669,16 +684,14 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
         </div>
       </div>
 
-      {/* MODAL GRAFIK DETAIL */}
+      {/* MODAL CHART DETAIL */}
       {selectedTrafo && (
         <div className="fixed top-0 left-0 w-screen h-screen z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div
-            className={`w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${isDarkMode ? "bg-slate-800" : "bg-white"
-              }`}
+            className={`w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
           >
             <div
-              className={`flex justify-between items-center p-6 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"
-                }`}
+              className={`flex justify-between items-center p-6 border-b ${isDarkMode ? "border-slate-700" : "border-gray-100"}`}
             >
               <div>
                 <h3
@@ -702,10 +715,7 @@ const DashboardPage = ({ isDarkMode, liveData = [], userRole, userUnit }) => {
                   <button
                     key={gas.key}
                     onClick={() => toggleSeries(gas.key)}
-                    className={`px-3 py-1 rounded-full text-xs font-bold border transition ${activeSeries[gas.key]
-                      ? "bg-blue-500/10 text-blue-600 border-blue-500"
-                      : "opacity-50 grayscale"
-                      }`}
+                    className={`px-3 py-1 rounded-full text-xs font-bold border transition ${activeSeries[gas.key] ? "bg-blue-500/10 text-blue-600 border-blue-500" : "opacity-50 grayscale"}`}
                   >
                     {gas.key}
                   </button>
