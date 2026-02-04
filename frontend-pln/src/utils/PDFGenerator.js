@@ -1,44 +1,155 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-// Fungsi untuk menentukan kondisi dari status IEEE
-// PERBAIKAN: Prioritaskan status IEEE yang sudah ada, bukan hanya cek C2H2
+// ============================================
+// KONSTANTA WARNA
+// ============================================
+
+// Warna IEEE C57.104-2019
+const IEEE_COLORS = {
+  kondisi1: [0, 128, 0],      // Hijau biasa
+  kondisi2: [204, 153, 0],    // Kuning tua
+  kondisi3: [178, 34, 34],    // Merah darah
+};
+
+// Warna SPLN T5.004-4:2016
+const SPLN_COLORS = {
+  kondisi1: [0, 128, 0],      // Hijau
+  kondisi2: [255, 140, 0],    // Orange
+  kondisi3: [255, 64, 30],  // Merah muda (pink)
+  kondisi4: [128, 0, 0],      // Merah maroon/tua
+};
+
+// Warna status SPLN untuk tabel Panduan
+const SPLN_STATUS_COLORS = {
+  veryGood: [144, 238, 144],  // Hijau muda (light green)
+  good: [34, 139, 34],        // Hijau tua (forest green)
+  fair: [255, 140, 0],        // Orange
+  poor: [255, 105, 180],      // Merah muda (pink)
+  critical: [139, 0, 0],      // Merah tua (dark red)
+};
+
+// Batas IEEE C57.104-2019
+const IEEE_LIMITS = {
+  h2: 100,
+  ch4: 120,
+  c2h2: 1,
+  c2h4: 50,
+  c2h6: 65,
+  co: 350,
+  co2: 2500,
+};
+
+// ============================================
+// FUNGSI UTILITAS
+// ============================================
+
+// Fungsi untuk menghitung TDCG (Total Dissolved Combustible Gas) - tanpa CO2
+const calculateTDCG = (data) => {
+  return Math.round(
+    (parseFloat(data.h2) || 0) + 
+    (parseFloat(data.ch4) || 0) + 
+    (parseFloat(data.c2h2) || 0) + 
+    (parseFloat(data.c2h4) || 0) + 
+    (parseFloat(data.c2h6) || 0) + 
+    (parseFloat(data.co) || 0)
+  );
+};
+
+// Fungsi untuk menentukan kondisi IEEE berdasarkan TDCG
+const getIEEEKondisi = (tdcg) => {
+  if (tdcg <= 720) {
+    return { kondisi: 1, text: "Normal", color: IEEE_COLORS.kondisi1 };
+  } else if (tdcg <= 1920) {
+    return { kondisi: 2, text: "Waspada", color: IEEE_COLORS.kondisi2 };
+  } else {
+    return { kondisi: 3, text: "Bahaya", color: IEEE_COLORS.kondisi3 };
+  }
+};
+
+// Fungsi untuk parse kondisi IEEE dari status_ieee yang sudah dianalisis oleh AI
+const parseIEEEStatusFromAI = (statusIeee, tdcg) => {
+  if (!statusIeee) {
+    return getIEEEKondisi(tdcg);
+  }
+  
+  const status = statusIeee.toUpperCase();
+  
+  // Cek kondisi 3 (Bahaya/Kritis)
+  if (status.includes("KRITIS") || status.includes("COND 3") || status.includes("CONDITION 3") || status.includes("BAHAYA")) {
+    return { kondisi: 3, text: "Bahaya", color: IEEE_COLORS.kondisi3 };
+  }
+  
+  // Cek kondisi 2 (Waspada)
+  if (status.includes("WASPADA") || status.includes("COND 2") || status.includes("CONDITION 2") || status.includes("CAUTION")) {
+    return { kondisi: 2, text: "Waspada", color: IEEE_COLORS.kondisi2 };
+  }
+  
+  // Cek kondisi 1 (Normal)
+  if (status.includes("NORMAL") || status.includes("COND 1") || status.includes("CONDITION 1")) {
+    return { kondisi: 1, text: "Normal", color: IEEE_COLORS.kondisi1 };
+  }
+  
+  // Fallback ke perhitungan TDCG jika tidak terdeteksi
+  return getIEEEKondisi(tdcg);
+};
+
+// Fungsi untuk menentukan kondisi SPLN berdasarkan TDCG
+const getSPLNKondisi = (tdcg) => {
+  if (tdcg <= 720) {
+    return { kondisi: 1, text: "Normal", color: SPLN_COLORS.kondisi1 };
+  } else if (tdcg <= 1920) {
+    return { kondisi: 2, text: "Waspada", color: SPLN_COLORS.kondisi2 };
+  } else if (tdcg <= 4630) {
+    return { kondisi: 3, text: "Peringatan", color: SPLN_COLORS.kondisi3 };
+  } else {
+    return { kondisi: 4, text: "Bahaya", color: SPLN_COLORS.kondisi4 };
+  }
+};
+
+// Fungsi untuk mendapatkan status SPLN per gas
+const getSPLNGasStatus = (gas, value) => {
+  const v = parseFloat(value) || 0;
+  const limits = {
+    h2: { veryGood: 30, good: 99, fair: 699, poor: 1800 },
+    ch4: { veryGood: 121, good: 400, fair: 1200, poor: 1500 },
+    c2h2: { veryGood: 0, good: 1, fair: 10, poor: 35 },
+    c2h4: { veryGood: 20, good: 50, fair: 100, poor: 200 },
+    c2h6: { veryGood: 65, good: 100, fair: 200, poor: 500 },
+    co: { veryGood: 350, good: 570, fair: 2500, poor: 5000 },
+    co2: { veryGood: 2500, good: 4000, fair: 10000, poor: 17500 },
+  };
+
+  const l = limits[gas];
+  if (!l) return { status: "N/A", color: [128, 128, 128] };
+
+  if (v <= l.veryGood) return { status: "Very Good", color: SPLN_STATUS_COLORS.veryGood };
+  if (v <= l.good) return { status: "Good", color: SPLN_STATUS_COLORS.good };
+  if (v <= l.fair) return { status: "Fair", color: SPLN_STATUS_COLORS.fair };
+  if (v <= l.poor) return { status: "Poor", color: SPLN_STATUS_COLORS.poor };
+  return { status: "Critical", color: SPLN_STATUS_COLORS.critical };
+};
+
+// Fungsi untuk menentukan kondisi IEEE lama (untuk backward compatibility)
 const getKondisi = (status, data) => {
-  if (!status) return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
-  
-  // Prioritas 1: Cek status IEEE terlebih dahulu (status yang sudah dianalisis)
-  if (status.includes("KRITIS") || status.includes("Kritis") || status.includes("Cond 3") || status.includes("Condition 3")) {
-    return { kondisi: "3", text: "Bahaya", color: [220, 50, 50] };
-  }
-  if (status.includes("Waspada") || status.includes("Cond 2") || status.includes("Condition 2")) {
-    return { kondisi: "2", text: "Waspada", color: [255, 165, 0] };
-  }
-  if (status.includes("Normal") || status.includes("Cond 1") || status.includes("Condition 1")) {
-    return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
-  }
-  
-  // Prioritas 2: Jika status tidak jelas, gunakan fallback berdasarkan gas (untuk kasus tanpa status IEEE)
-  // C2H2 > 5 ppm menunjukkan arcing serius (berdasarkan IEEE C57.104-2019)
-  if (data?.c2h2 && parseFloat(data.c2h2) > 5) {
-    return { kondisi: "3", text: "Bahaya", color: [220, 50, 50] };
-  }
-  
-  return { kondisi: "1", text: "Normal", color: [0, 128, 0] };
+  const tdcg = calculateTDCG(data);
+  return getIEEEKondisi(tdcg);
 };
 
 // Fungsi untuk generate kesimpulan otomatis berdasarkan data DGA
 const generateAutoKesimpulan = (data) => {
-  const kondisi = getKondisi(data.status_ieee, data);
+  const tdcg = calculateTDCG(data);
+  const kondisi = getIEEEKondisi(tdcg);
   
   let kesimpulan = `Berdasarkan hasil pengujian Dissolved Gas Analysis (DGA) pada transformator ${data.nama_trafo || '-'} di ${data.lokasi_gi || '-'} tanggal ${data.tanggal_sampling || '-'}, berikut adalah kesimpulan dan rekomendasi:\n\n`;
   
   // Rekomendasi berdasarkan kondisi
-  if (kondisi.kondisi === "1") {
+  if (kondisi.kondisi === 1) {
     kesimpulan += `Kondisi transformator dalam keadaan NORMAL. Tidak ditemukan indikasi gangguan yang signifikan. Rekomendasi tindak lanjut:\n\n`;
     kesimpulan += `• Lanjutkan monitoring rutin sesuai jadwal pemeliharaan\n`;
     kesimpulan += `• Interval pengujian DGA berikutnya: 12 bulan\n`;
     kesimpulan += `• Pertahankan kondisi operasi transformator seperti saat ini\n`;
-  } else if (kondisi.kondisi === "2") {
+  } else if (kondisi.kondisi === 2) {
     kesimpulan += `Kondisi transformator PERLU PERHATIAN. Terdeteksi adanya indikasi gangguan yang memerlukan monitoring lebih ketat. Rekomendasi tindak lanjut:\n\n`;
     kesimpulan += `• Periksa dan evaluasi beban operasi transformator\n`;
     kesimpulan += `• Persingkat interval pengujian DGA menjadi 3-6 bulan\n`;
@@ -56,6 +167,71 @@ const generateAutoKesimpulan = (data) => {
   kesimpulan += `\n\nCatatan: Rekomendasi ini dihasilkan secara otomatis berdasarkan standar IEEE C57.104-2019. Untuk analisis lebih mendalam dan rekomendasi spesifik, silakan konsultasikan dengan VOLTY AI Assistant.`;
   
   return kesimpulan;
+};
+
+// Fungsi untuk mendeteksi zona Duval Pentagon dari titik
+const detectDuvalZone = (gasData) => {
+  const { h2, ch4, c2h6, c2h4, c2h2 } = gasData;
+  const total = h2 + ch4 + c2h6 + c2h4 + c2h2;
+  
+  if (total === 0) return null;
+  
+  const rad = (deg) => (deg * Math.PI) / 180;
+  
+  // Hitung persentase
+  const pH2 = (h2 / total) * 100;
+  const pC2H6 = (c2h6 / total) * 100;
+  const pCH4 = (ch4 / total) * 100;
+  const pC2H4 = (c2h4 / total) * 100;
+  const pC2H2 = (c2h2 / total) * 100;
+  
+  const k = 0.4;
+  const points = [
+    { x: 0, y: pH2 * k },
+    { x: pC2H6 * k * Math.cos(rad(162)), y: pC2H6 * k * Math.sin(rad(162)) },
+    { x: pCH4 * k * Math.cos(rad(234)), y: pCH4 * k * Math.sin(rad(234)) },
+    { x: pC2H4 * k * Math.cos(rad(306)), y: pC2H4 * k * Math.sin(rad(306)) },
+    { x: pC2H2 * k * Math.cos(rad(18)), y: pC2H2 * k * Math.sin(rad(18)) }
+  ];
+  
+  let Cx = 0, Cy = 0;
+  points.forEach(p => {
+    Cx += p.x;
+    Cy += p.y;
+  });
+  
+  // Deteksi zona berdasarkan posisi centroid
+  // Ini adalah aproksimasi sederhana berdasarkan koordinat zona
+  
+  // PD zone (tengah atas kecil)
+  if (Cy > 24.5 && Cy < 33 && Math.abs(Cx) < 1) return "PD";
+  
+  // S zone (kiri atas)
+  if (Cx < 0 && Cy > 1.5) return "S";
+  
+  // D1 zone (kanan atas)
+  if (Cx > 0 && Cy > 1.5) return "D1";
+  
+  // D2 zone (kanan tengah)
+  if (Cx > 0 && Cy > -3 && Cy <= 1.5) return "D2";
+  
+  // T3 zone (bawah kanan)
+  if (Cx > -6 && Cy <= -3 && Cx > 0) return "T3";
+  
+  // T2 zone (bawah tengah kiri)
+  if (Cx <= 0 && Cy < -4 && Cx > -22.5) return "T2";
+  
+  // T1 zone (kiri)
+  if (Cx < 0 && Cy <= 1.5 && Cy > -4) return "T1";
+  
+  // Default to closest approximation
+  if (Cy > 0) {
+    return Cx > 0 ? "D1" : "S";
+  } else {
+    if (Cx > 5) return "T3";
+    if (Cx < -5) return "T1";
+    return "T2";
+  }
 };
 
 // Fungsi untuk menggambar Duval Pentagon dengan warna zona
@@ -230,221 +406,14 @@ export const generatePDFFromTemplate = (data) => {
       format: "a4"
     });
     
-    // Ambil kondisi
-    const kondisiInfo = getKondisi(data.status_ieee, data);
-    
-    let currentY = 15;
-    
-    // ============================================
-    // 1. HEADER - Standar IEEE
-    // ============================================
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("Standar: IEEE C57.104-2019", 14, currentY);
-    
-    currentY += 10;
-    
-    // ============================================
-    // 2. IDENTITAS TRANSFORMATOR & DATA SAMPLING
-    // ============================================
-    
-    // Judul Identitas Transformator (Kiri)
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 139, 139); // Teal color
-    doc.text("Identitas Transformator", 14, currentY);
-    
-    // Judul Data Sampling (Kanan)
-    doc.text("Data Sampling", 120, currentY);
-    
-    currentY += 6;
-    
-    // Data Identitas Transformator (Kiri)
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    
-    const leftLabels = [
-      { label: "Gardu Induk", value: data.lokasi_gi || "" },
-      { label: "Trafo", value: data.nama_trafo || "" },
-      { label: "Merk Trafo", value: data.merk_trafo || "" },
-      { label: "No. Seri Trafo", value: data.serial_number || "" },
-      { label: "Tahun", value: data.tahun_pembuatan || "" },
-      { label: "Volt", value: data.level_tegangan || "" },
-    ];
-    
-    const rightLabels = [
-      { label: "Tanggal Tes", value: data.tanggal_sampling || "" },
-      { label: "Petugas", value: data.diambil_oleh || "" },
-    ];
-    
-    // Gambar data kiri
-    leftLabels.forEach((item, index) => {
-      const y = currentY + (index * 5);
-      doc.setTextColor(0, 139, 139);
-      doc.text(item.label, 14, y);
-      doc.setTextColor(0, 0, 0);
-      doc.text(":", 55, y);
-      doc.text(String(item.value), 60, y);
-    });
-    
-    // Gambar data kanan
-    rightLabels.forEach((item, index) => {
-      const y = currentY + (index * 5);
-      doc.setTextColor(0, 139, 139);
-      doc.text(item.label, 120, y);
-      doc.setTextColor(0, 0, 0);
-      doc.text(":", 155, y);
-      doc.text(String(item.value), 160, y);
-    });
-    
-    currentY += 35;
-    
-    // ============================================
-    // 3. DGA (Dissolved Gas Analysis)
-    // ============================================
-    
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("DGA (Dissolved Gas Anaylsis)", 14, currentY);
-    
-    currentY += 5;
-    
     // Hitung TDCG
-    const tdcgValue = Math.round(
-      (parseFloat(data.h2) || 0) + 
-      (parseFloat(data.ch4) || 0) + 
-      (parseFloat(data.c2h2) || 0) + 
-      (parseFloat(data.c2h4) || 0) + 
-      (parseFloat(data.c2h6) || 0) + 
-      (parseFloat(data.co) || 0)
-    );
+    const tdcgValue = calculateTDCG(data);
     
-    // Data untuk tabel DGA
-    const dgaTableData = [
-      ["Hidrogen (H2)", data.h2 || 0],
-      ["Metana (CH4)", data.ch4 || 0],
-      ["Asetilena (C2H2)", data.c2h2 || 0],
-      ["Etilen (C2H4)", data.c2h4 || 0],
-      ["Etana (C2H6)", data.c2h6 || 0],
-      ["Karbon Monoksida (CO)", data.co || 0],
-      ["Karbon Dioksida (CO2)", data.co2 || 0],
-    ];
+    // Gunakan status_ieee dari hasil AI jika ada, kalau tidak fallback ke perhitungan TDCG
+    const ieeeKondisi = parseIEEEStatusFromAI(data.status_ieee, tdcgValue);
+    const splnKondisi = getSPLNKondisi(tdcgValue);
     
-    autoTable(doc, {
-      startY: currentY,
-      head: [["PARAMETER UJI", "HASIL (ppmv)"]],
-      body: dgaTableData,
-      theme: "grid",
-      headStyles: {
-        fillColor: [0, 139, 139],
-        textColor: 255,
-        fontStyle: "bold",
-        halign: "center",
-        fontSize: 10,
-      },
-      bodyStyles: {
-        halign: "center",
-        fontSize: 10,
-      },
-      columnStyles: {
-        0: { cellWidth: 80 },
-        1: { cellWidth: 80 },
-      },
-      styles: {
-        cellPadding: 2,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.2,
-      },
-      tableWidth: 160,
-      margin: { left: 14 },
-    });
-    
-    // Tambah baris HASIL TDCG dan STATUS KONDISI
-    let tdcgY = doc.lastAutoTable.finalY;
-    
-    autoTable(doc, {
-      startY: tdcgY,
-      body: [
-        [{ content: "HASIL TDCG", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
-         { content: tdcgValue, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
-        [{ content: "STATUS KONDISI", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
-         { content: `Kondisi ${kondisiInfo.kondisi}`, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
-      ],
-      theme: "grid",
-      bodyStyles: {
-        halign: "center",
-        fontSize: 10,
-      },
-      columnStyles: {
-        0: { cellWidth: 80 },
-        1: { cellWidth: 80 },
-      },
-      styles: {
-        cellPadding: 2,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.2,
-      },
-      tableWidth: 160,
-      margin: { left: 14 },
-    });
-    
-    currentY = doc.lastAutoTable.finalY + 8;
-    
-    // ============================================
-    // 4. KONDISI STATUS (Kiri) & DUVAL PENTAGON (Kanan)
-    // ============================================
-    
-    const kondisiStartY = currentY;
-    
-    // Kondisi Status (Kiri)
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("Kondisi Status", 14, currentY);
-    
-    currentY += 6;
-    
-    // Kondisi 1 - Normal (Hijau)
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 1", 20, currentY);
-    doc.setTextColor(0, 128, 0);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Normal. Lanjut monitoring.", 42, currentY);
-    
-    currentY += 5;
-    
-    // Kondisi 2 - Waspada (Orange)
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 2", 20, currentY);
-    doc.setTextColor(255, 165, 0);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Waspada. Cek beban & interval uji.", 42, currentY);
-    
-    currentY += 5;
-    
-    // Kondisi 3 - Bahaya (Merah)
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 3", 20, currentY);
-    doc.setTextColor(220, 50, 50);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Bahaya. Indikasi kerusakan aktif.", 42, currentY);
-    
-    
-    // Duval Pentagon (Kanan) - Gambar di sebelah kanan kondisi status
-    const pentagonCenterX = 150;
-    const pentagonCenterY = kondisiStartY + 22;
-    const pentagonSize = 42;
-    
-    // Data gas untuk pentagon
+    // Gas data untuk pentagon
     const gasData = {
       h2: parseFloat(data.h2) || 0,
       ch4: parseFloat(data.ch4) || 0,
@@ -453,71 +422,408 @@ export const generatePDFFromTemplate = (data) => {
       c2h2: parseFloat(data.c2h2) || 0
     };
     
-    // Gambar Duval Pentagon
-    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    // Deteksi zona Duval
+    const detectedZone = detectDuvalZone(gasData);
     
-    // Tabel dimulai setelah pentagon selesai tapi dengan margin minimal
-    const pentagonBottomY = pentagonCenterY + (pentagonSize * 0.95);
-    currentY = pentagonBottomY + -14;
+    let currentY = 15;
     
     // ============================================
-    // 5. IEEE Std C57.104™-2019 Reference Table
+    // HALAMAN 1: LAPORAN HASIL UJI DGA
     // ============================================
     
-    doc.setFontSize(11);
+    // Header Judul
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text("Standar: IEEE Std C57.104-2019", 14, currentY);
+    doc.text("LAPORAN HASIL UJI DGA", 14, currentY);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 100, 100);
+    doc.text("(Dissolved Gas Analysis)", 80, currentY);
+    
+    currentY += 10;
+    
+    // ============================================
+    // IDENTITAS TRANSFORMATOR & DATA SAMPLING (side by side)
+    // ============================================
+    
+    // Judul Identitas Transformator (Kiri)
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Identitas Transformator", 14, currentY);
+    
+    // Judul Data Sampling (Kanan)
+    doc.text("Data Sampling", 120, currentY);
     
     currentY += 5;
     
-    // Tabel referensi IEEE
-    const ieeeReferenceData = [
-      [{ content: "Hidrogen (H2)", styles: { textColor: [0, 139, 139] } }, { content: "100 ppm", styles: { textColor: [220, 50, 50] } }, "Partial Discharge / Stray Gassing"],
-      [{ content: "Metana (CH4)", styles: { textColor: [0, 139, 139] } }, { content: "120 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Minyak"],
-      [{ content: "Asetilen (C2H2)", styles: { textColor: [0, 139, 139] } }, { content: "1 ppm", styles: { textColor: [220, 50, 50] } }, "Arcing (Busur Api) - SANGAT KRITIS"],
-      [{ content: "Etilen (C2H4)", styles: { textColor: [0, 139, 139] } }, { content: "50 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Tinggi (>700\u00B0C)"],
-      [{ content: "Etana (C2H6)", styles: { textColor: [0, 139, 139] } }, { content: "65 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Menengah"],
-      [{ content: "Karbon Monoksida (CO)", styles: { textColor: [0, 139, 139] } }, { content: "350 ppm", styles: { textColor: [220, 50, 50] } }, "Degradasi Kertas Isolasi"],
-      [{ content: "Karbon Dioksida (CO2)", styles: { textColor: [0, 139, 139] } }, { content: "2500 ppm", styles: { textColor: [220, 50, 50] } }, "Penuaan Kertas / Oksidasi"],
+    // Data Identitas Transformator (Kiri)
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    
+    const leftLabels = [
+      { label: "Gardu Induk", value: data.lokasi_gi || "-" },
+      { label: "Trafo", value: data.nama_trafo || "-" },
+      { label: "Merk Trafo", value: data.merk_trafo || "-" },
+      { label: "No. Seri Trafo", value: data.serial_number || "-" },
+      { label: "Tahun", value: data.tahun_pembuatan || "-" },
+      { label: "Volt", value: data.level_tegangan || "-" },
+    ];
+    
+    const rightLabels = [
+      { label: "Tanggal Tes", value: data.tanggal_sampling || "-" },
+      { label: "Petugas", value: data.diambil_oleh || "-" },
+    ];
+    
+    // Gambar data kiri
+    leftLabels.forEach((item, index) => {
+      const y = currentY + (index * 5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(item.label, 14, y);
+      doc.text(":", 48, y);
+      doc.text(String(item.value), 52, y);
+    });
+    
+    // Gambar data kanan
+    rightLabels.forEach((item, index) => {
+      const y = currentY + (index * 5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(item.label, 120, y);
+      doc.text(":", 150, y);
+      doc.text(String(item.value), 154, y);
+    });
+    
+    currentY += 45;
+    
+    // ============================================
+    // DUA TABEL SIDE BY SIDE: IEEE (KIRI) & SPLN (KANAN)
+    // ============================================
+    
+    const tableStartY = currentY;
+    const tableWidth = 88;
+    const leftTableX = 14;
+    const rightTableX = 108;
+    
+    // ----- TABEL IEEE (KIRI) -----
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 139); // Dark blue
+    doc.text("Standar (IEEE C57.104-2019)", leftTableX, currentY);
+    
+    // ----- TABEL SPLN (KANAN) -----
+    doc.setTextColor(139, 0, 0); // Dark red
+    doc.text("Standar (SPLN T5.004-4: 2016)", rightTableX, currentY);
+    
+    currentY += 3;
+    
+    // IEEE Table data dengan warna berdasarkan batas
+    const getIEEEValueColor = (gas, value) => {
+      const v = parseFloat(value) || 0;
+      const limit = IEEE_LIMITS[gas];
+      if (v >= limit) return [220, 50, 50]; // Merah jika melebihi
+      return [0, 128, 0]; // Hijau jika di bawah
+    };
+    
+    const ieeeTableBody = [
+      ["Hidrogen (H2)", { content: String(data.h2 || 0), styles: { textColor: getIEEEValueColor("h2", data.h2) } }, "100 ppm"],
+      ["Metana (CH4)", { content: String(data.ch4 || 0), styles: { textColor: getIEEEValueColor("ch4", data.ch4) } }, "120 ppm"],
+      ["Asetilena (C2H2)", { content: String(data.c2h2 || 0), styles: { textColor: getIEEEValueColor("c2h2", data.c2h2) } }, "1 ppm"],
+      ["Etilen (C2H4)", { content: String(data.c2h4 || 0), styles: { textColor: getIEEEValueColor("c2h4", data.c2h4) } }, "50 ppm"],
+      ["Etana (C2H6)", { content: String(data.c2h6 || 0), styles: { textColor: getIEEEValueColor("c2h6", data.c2h6) } }, "65 ppm"],
+      ["Karbon Monoksida (CO)", { content: String(data.co || 0), styles: { textColor: getIEEEValueColor("co", data.co) } }, "350 ppm"],
+      ["Karbon Dioksida (CO2)", { content: String(data.co2 || 0), styles: { textColor: getIEEEValueColor("co2", data.co2) } }, "2500 ppm"],
     ];
     
     autoTable(doc, {
       startY: currentY,
-      head: [["Gas", "Limit (ppm)", "Indikasi"]],
-      body: ieeeReferenceData,
+      head: [["PARAMETER UJI", "HASIL\n(ppm)", "Batas\nAtas"]],
+      body: ieeeTableBody,
+      theme: "grid",
+      headStyles: {
+        fillColor: [0, 100, 150],
+        textColor: 255,
+        fontStyle: "bold",
+        halign: "center",
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      bodyStyles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 20, halign: "center", textColor: [220, 50, 50] },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2,
+      },
+      tableWidth: tableWidth - 6,
+      margin: { left: leftTableX },
+    });
+    
+    // Tambah TDCG dan Kondisi Status untuk IEEE
+    let ieeeTableEndY = doc.lastAutoTable.finalY;
+    
+    autoTable(doc, {
+      startY: ieeeTableEndY,
+      body: [
+        [{ content: "HASIL TDCG", styles: { fontStyle: "bold" } }, 
+         { content: String(tdcgValue), colSpan: 2, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } }],
+        [{ content: "KONDISI STATUS", styles: { fontStyle: "bold" } }, 
+         { content: `Kondisi ${ieeeKondisi.kondisi}`, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } },
+         { content: ieeeKondisi.text, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } }],
+      ],
+      theme: "grid",
+      bodyStyles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 20, halign: "center" },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2,
+      },
+      tableWidth: tableWidth - 6,
+      margin: { left: leftTableX },
+    });
+    
+    // SPLN Table data dengan warna status
+    const splnTableBody = [
+      ["Hidrogen (H2)", { content: String(data.h2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("h2", data.h2).status, styles: { textColor: getSPLNGasStatus("h2", data.h2).color } }],
+      ["Metana (CH4)", { content: String(data.ch4 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("ch4", data.ch4).status, styles: { textColor: getSPLNGasStatus("ch4", data.ch4).color } }],
+      ["Asetilena (C2H2)", { content: String(data.c2h2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h2", data.c2h2).status, styles: { textColor: getSPLNGasStatus("c2h2", data.c2h2).color } }],
+      ["Etilen (C2H4)", { content: String(data.c2h4 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h4", data.c2h4).status, styles: { textColor: getSPLNGasStatus("c2h4", data.c2h4).color } }],
+      ["Etana (C2H6)", { content: String(data.c2h6 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h6", data.c2h6).status, styles: { textColor: getSPLNGasStatus("c2h6", data.c2h6).color } }],
+      ["Karbon Monoksida (CO)", { content: String(data.co || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("co", data.co).status, styles: { textColor: getSPLNGasStatus("co", data.co).color } }],
+      ["Karbon Dioksida (CO2)", { content: String(data.co2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("co2", data.co2).status, styles: { textColor: getSPLNGasStatus("co2", data.co2).color } }],
+    ];
+    
+    autoTable(doc, {
+      startY: tableStartY + 3,
+      head: [["PARAMETER UJI", "HASIL\n(ppm)", "Status"]],
+      body: splnTableBody,
+      theme: "grid",
+      headStyles: {
+        fillColor: [139, 69, 19],
+        textColor: 255,
+        fontStyle: "bold",
+        halign: "center",
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      bodyStyles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 22, halign: "center" },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2,
+      },
+      tableWidth: tableWidth - 6,
+      margin: { left: rightTableX },
+    });
+    
+    // Tambah TDCG dan Kondisi Status untuk SPLN
+    let splnTableEndY = doc.lastAutoTable.finalY;
+    
+    autoTable(doc, {
+      startY: splnTableEndY,
+      body: [
+        [{ content: String(tdcgValue), colSpan: 3, styles: { halign: "center", textColor: splnKondisi.color, fontStyle: "bold" } }],
+        [{ content: `Kondisi ${splnKondisi.kondisi} - ${splnKondisi.text}`, colSpan: 3, styles: { halign: "center", textColor: splnKondisi.color, fontStyle: "bold" } }],
+      ],
+      theme: "grid",
+      bodyStyles: {
+        fontSize: 8,
+        cellPadding: 1.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 22, halign: "center" },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2,
+      },
+      tableWidth: tableWidth - 6,
+      margin: { left: rightTableX },
+    });
+    
+    currentY = Math.max(doc.lastAutoTable.finalY, ieeeTableEndY + 20) + 8;
+    
+    // ============================================
+    // KONDISI STATUS IEEE (KIRI) & KONDISI STATUS SPLN (KANAN ATAS)
+    // ============================================
+    
+    const kondisiStartY = currentY;
+    
+    // ----- KONDISI STATUS IEEE (KIRI) -----
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 139);
+    doc.text("Kondisi Status (IEEE C57.104-2019)", leftTableX, currentY);
+
+    currentY += 6;
+
+    // Kondisi 1 - Normal (Hijau)
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 1 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi1[0], IEEE_COLORS.kondisi1[1], IEEE_COLORS.kondisi1[2]);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Normal. Lanjut monitoring.", leftTableX + 22, currentY);
+
+    currentY += 6;
+
+    // Kondisi 2 - Waspada (Kuning tua)
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 2 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi2[0], IEEE_COLORS.kondisi2[1], IEEE_COLORS.kondisi2[2]);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Waspada. Cek beban & interval uji.", leftTableX + 22, currentY);
+
+    currentY += 6;
+
+    // Kondisi 3 - Bahaya (Merah darah)
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 3 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi3[0], IEEE_COLORS.kondisi3[1], IEEE_COLORS.kondisi3[2]);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bahaya. Indikasi kerusakan aktif.", leftTableX + 22, currentY);
+    
+    // ----- KONDISI STATUS SPLN (KANAN ATAS) -----
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(139, 0, 0);
+    doc.text("Kondisi Status (SPLN T5.004-4: 2016)", rightTableX, kondisiStartY);
+    
+    // Tabel kondisi SPLN
+    const splnKondisiTableY = kondisiStartY + 3;
+    
+    autoTable(doc, {
+      startY: splnKondisiTableY,
+      head: [["Status", "Limit TDCG", "Tindakan"]],
+      body: [
+        [{ content: "Kondisi 1", styles: { textColor: [0, 0, 0] } }, { content: "<= 720", styles: { textColor: [139, 0, 0] } }, { content: "Normal", styles: { textColor: SPLN_COLORS.kondisi1, fontStyle: "bold" } }],
+        [{ content: "Kondisi 2", styles: { textColor: [0, 0, 0] } }, { content: "<=1920", styles: { textColor: [139, 0, 0] } }, { content: "Waspada", styles: { textColor: SPLN_COLORS.kondisi2, fontStyle: "bold"  } }],
+        [{ content: "Kondisi 3", styles: { textColor: [0, 0, 0] } }, { content: "<=4630", styles: { textColor: [139, 0, 0] } }, { content: "Peringatan", styles: { textColor: SPLN_COLORS.kondisi3, fontStyle: "bold"  } }],
+        [{ content: "Kondisi 4", styles: { textColor: [0, 0, 0] } }, { content: ">=4631", styles: { textColor: [139, 0, 0] } }, { content: "Bahaya", styles: { textColor: SPLN_COLORS.kondisi4, fontStyle: "bold"  } }],
+      ],
       theme: "grid",
       headStyles: {
         fillColor: [240, 240, 240],
         textColor: [0, 0, 0],
         fontStyle: "bold",
-        fontSize: 10,
+        fontSize: 8,
+        cellPadding: 2,
       },
       bodyStyles: {
-        fontSize: 9,
+        fontSize: 8,
+        cellPadding: 2,
       },
       columnStyles: {
-        0: { cellWidth: 50 },
-        1: { cellWidth: 30, halign: "center" },
-        2: { cellWidth: 80 },
+        0: { cellWidth: 22 },
+        1: { cellWidth: 22, halign: "center" },
+        2: { cellWidth: 22, halign: "center" },
       },
       styles: {
-        cellPadding: 2.5,
         lineColor: [0, 0, 0],
-        lineWidth: 0.2,
+        lineWidth: 0.15,
       },
-      tableWidth: 160,
-      margin: { left: 14 },
+      tableWidth: 76,
+      margin: { left: rightTableX },
     });
-
+    
+    currentY = Math.max(currentY + 14, doc.lastAutoTable.finalY + 24);
+    
     // ============================================
-    // HALAMAN KEDUA: KESIMPULAN ANALISIS
+    // KODE DIAGNOSA (KIRI) & DUVAL PENTAGON (KANAN)
+    // ============================================
+    
+    const diagStartY = currentY;
+    
+    // ----- KODE DIAGNOSA (KIRI) -----
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Duval Pentagon - Kode Diagnosa:", leftTableX, currentY);
+    
+    currentY += 5;
+    
+    // Daftar kode diagnosa dengan highlight berdasarkan zona terdeteksi
+    const faultTypes = [
+      { code: "PD", desc: "Partial Discharge (Peluasan Parsial)" },
+      { code: "D1", desc: "Discharge Low Energy (Percikan kecil)" },
+      { code: "D2", desc: "Discharge High Energy (Arcing kuat)" },
+      { code: "S", desc: "Stray Gassing (Stray Gassing)" },
+      { code: "T1", desc: "Thermal Fault < 300°C" },
+      { code: "T2", desc: "Thermal Fault 300°C - 700°C" },
+      { code: "T3", desc: "Thermal Fault > 700°C" },
+    ];
+    
+    faultTypes.forEach((fault, index) => {
+      const y = currentY + (index * 5);
+      const isDetected = detectedZone === fault.code;
+      
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${fault.code}:`, leftTableX, y);
+      
+      if (isDetected) {
+        // Highlight dengan warna merah jika terdeteksi
+        doc.setTextColor(220, 50, 50);
+        doc.setFont("helvetica", "bold");
+      } else {
+        doc.setTextColor(80, 80, 80);
+        doc.setFont("helvetica", "normal");
+      }
+      doc.text(fault.desc, leftTableX + 10, y);
+    });
+    
+    // ----- DUVAL PENTAGON (KANAN) -----
+    const pentagonCenterX = 155;
+    const pentagonCenterY = diagStartY + 22;
+    const pentagonSize = 48;
+    
+    // Gambar Duval Pentagon
+    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    
+    // Footer halaman 1
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')} | Smart-Trafo PLN UPT Manado`, 105, 287, { align: "center" });
+    
+    // ============================================
+    // HALAMAN 2: KESIMPULAN ANALISIS AI
     // ============================================
     doc.addPage();
     
     currentY = 15;
     
-    // Header halaman 2 - Standar IEEE (sama seperti halaman 1)
+    // Header halaman 2
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -536,7 +842,6 @@ export const generatePDFFromTemplate = (data) => {
     // Info Transformator
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
     
     const infoLabels = [
       { label: "Gardu Induk", value: data.lokasi_gi || "-" },
@@ -558,7 +863,7 @@ export const generatePDFFromTemplate = (data) => {
     // Tentukan apakah ada hasil AI
     const hasAIResult = data.hasil_ai && data.hasil_ai.trim() !== "" && data.hasil_ai !== "AI sedang menganalisis...";
     
-    // Debug: Log untuk memastikan hasil_ai terambil
+    // Debug
     console.log("PDF Page 2 - hasil_ai:", data.hasil_ai);
     console.log("PDF Page 2 - hasAIResult:", hasAIResult);
     
@@ -570,7 +875,7 @@ export const generatePDFFromTemplate = (data) => {
     autoTable(doc, {
       startY: currentY,
       head: [[{ 
-        content: hasAIResult ? "KESIMPULAN & REKOMENDASI by VOLTY AI" : "KESIMPULAN & REKOMENDASI by VOLTY AI", 
+        content: "KESIMPULAN & REKOMENDASI by VOLTY AI", 
         styles: { halign: "left" } 
       }]],
       body: [[kesimpulanContent]],
@@ -600,22 +905,228 @@ export const generatePDFFromTemplate = (data) => {
       margin: { left: 14 },
     });
     
-    // Footer halaman kedua
+    // Footer halaman 2
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     doc.setFont("helvetica", "italic");
     doc.text(
       hasAIResult ? "Analisis dihasilkan oleh VOLTY AI Assistant - PLN UPT Manado" : "Rekomendasi otomatis berdasarkan IEEE C57.104-2019",
-      105,
-      285,
-      { align: "center" }
+      105, 285, { align: "center" }
     );
-    doc.text(
-      `Generated: ${new Date().toLocaleString('id-ID')}`,
-      105,
-      290,
-      { align: "center" }
-    );
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')}`, 105, 290, { align: "center" });
+    
+    // ============================================
+    // HALAMAN 3: PANDUAN STANDAR
+    // ============================================
+    doc.addPage();
+    
+    currentY = 15;
+    
+    // Header halaman 3
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("PANDUAN STANDAR", 14, currentY);
+    
+    currentY += 10;
+    
+    // ----- STANDAR IEEE C57.104-2019 -----
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Standar: IEEE Std C57.104-2019", 14, currentY);
+    
+    currentY += 5;
+    
+    const ieeeGuideData = [
+      [{ content: "Hidrogen (H2)", styles: { textColor: [0, 139, 139] } }, { content: "100 ppm", styles: { textColor: [220, 50, 50] } }, "Partial Discharge / Stray Gassing"],
+      [{ content: "Metana (CH4)", styles: { textColor: [0, 139, 139] } }, { content: "120 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Minyak"],
+      [{ content: "Asetilen (C2H2)", styles: { textColor: [0, 139, 139] } }, { content: "1 ppm", styles: { textColor: [220, 50, 50] } }, "Arcing (Busur Api) - SANGAT KRITIS"],
+      [{ content: "Etilen (C2H4)", styles: { textColor: [0, 139, 139] } }, { content: "50 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Tinggi (>700°C)"],
+      [{ content: "Etana (C2H6)", styles: { textColor: [0, 139, 139] } }, { content: "65 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Menengah"],
+      [{ content: "Karbon Monoksida (CO)", styles: { textColor: [0, 139, 139] } }, { content: "350 ppm", styles: { textColor: [220, 50, 50] } }, "Degradasi Kertas Isolasi"],
+      [{ content: "Karbon Dioksida (CO2)", styles: { textColor: [0, 139, 139] } }, { content: "2500 ppm", styles: { textColor: [220, 50, 50] } }, "Penuaan Kertas / Oksidasi"],
+    ];
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Gas", "Limit (ppm)", "Indikasi"]],
+      body: ieeeGuideData,
+      theme: "grid",
+      headStyles: {
+        fillColor: [240, 240, 240],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      bodyStyles: {
+        fontSize: 8,
+      },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 30, halign: "center" },
+        2: { cellWidth: 90 },
+      },
+      styles: {
+        cellPadding: 2,
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2,
+      },
+      tableWidth: 170,
+      margin: { left: 14 },
+    });
+    
+    currentY = doc.lastAutoTable.finalY + 10;
+    
+    // ----- KODE DIAGNOSA DUVAl (PANDUAN) - HALAMAN 3 -----
+    const duvalGuide = [
+      [ { content: 'Kode', styles: { fontStyle: 'bold' } }, { content: 'Deskripsi' } ],
+      [ 'PD', 'Partial Discharge (Peluasan Parsial)' ],
+      [ 'D1', 'Discharge Low Energy (Percikan kecil)' ],
+      [ 'D2', 'Discharge High Energy (Arcing kuat)' ],
+      [ 'S',  'Stray Gassing (Stray Gassing) - indikasi gas terlarut yang tidak khas; verifikasi lebih lanjut' ],
+      [ 'T1', 'Thermal Fault < 300°C' ],
+      [ 'T2', 'Thermal Fault 300°C - 700°C' ],
+      [ 'T3', 'Thermal Fault > 700°C' ],
+    ];
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [ ['Kode', 'Deskripsi'] ],
+      body: duvalGuide.slice(1).map(r => [ { content: r[0], styles: { fontStyle: 'bold' } }, r[1] ]),
+      theme: 'grid',
+      headStyles: { fillColor: [240,240,240], textColor: [0,0,0], fontSize: 8, fontStyle: 'bold' },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 130 } },
+      tableWidth: 150,
+      margin: { left: 14 },
+    });
+
+    currentY = doc.lastAutoTable.finalY + 10;
+
+    // ----- STANDAR SPLN T5.004-4: 2016 -----
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Standar: SPLN T5.004-4: 2016", 14, currentY);
+    
+    currentY += 5;
+    
+    // Dua tabel SPLN side by side
+    const splnGuideLeft = [
+      ["Hidrogen (H2)", "<30 = Very Good\n<=99 = Good\n<=699 = Fair\n<=1800 = Poor\n>1800 = Critical"],
+      ["Metana (CH4)", "<121 = Very Good\n<=400 = Good\n<=1200 = Fair\n<=1500 = Poor\n>1500 = Critical"],
+      ["Asetilena (C2H2)", "=0 = Very Good\n<=1 = Good\n<=10 = Fair\n<=35 = Poor\n>35 = Critical"],
+    ];
+    
+    const splnGuideRight = [
+      ["Etana (C2H6)", "<65 = Very Good\n<=100 = Good\n<=200 = Fair\n<=500 = Poor\n>500 = Critical"],
+      ["Karbon Monoksida (CO)", "<=350 = Very Good\n<=570 = Good\n<=2500 = Fair\n<=5000 = Poor\n>5000 = Critical"],
+      ["Karbon Dioksida (CO2)", "<=2500 = Very Good\n<=4000 = Good\n<=10000 = Fair\n<=17500 = Poor\n>17500 = Critical"],
+    ];
+    
+    // Helper function to format SPLN limit text with colors
+    const formatSPLNCell = (text) => {
+      return text;
+    };
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Senyawa", "Limit"]],
+      body: splnGuideLeft.map(row => [
+        { content: row[0], styles: { textColor: [0, 139, 139], fontStyle: "bold" } },
+        { content: row[1], styles: { fontSize: 6 } }
+      ]),
+      theme: "grid",
+      headStyles: {
+        fillColor: [240, 240, 240],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        fontSize: 8,
+      },
+      bodyStyles: {
+        fontSize: 7,
+        cellPadding: 2,
+      },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 45 },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.15,
+      },
+      tableWidth: 80,
+      margin: { left: 14 },
+    });
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Senyawa", "Limit"]],
+      body: splnGuideRight.map(row => [
+        { content: row[0], styles: { textColor: [0, 139, 139], fontStyle: "bold" } },
+        { content: row[1], styles: { fontSize: 6 } }
+      ]),
+      theme: "grid",
+      headStyles: {
+        fillColor: [240, 240, 240],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        fontSize: 8,
+      },
+      bodyStyles: {
+        fontSize: 7,
+        cellPadding: 2,
+      },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 50 },
+      },
+      styles: {
+        lineColor: [0, 0, 0],
+        lineWidth: 0.15,
+      },
+      tableWidth: 90,
+      margin: { left: 105 },
+    });
+    
+    currentY = doc.lastAutoTable.finalY + 10;
+    
+    // Legend warna SPLN
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Keterangan Warna Status SPLN:", 14, currentY);
+    
+    currentY += 5;
+    
+    const colorLegend = [
+      { status: "Very Good", color: SPLN_STATUS_COLORS.veryGood },
+      { status: "Good", color: SPLN_STATUS_COLORS.good },
+      { status: "Fair", color: SPLN_STATUS_COLORS.fair },
+      { status: "Poor", color: SPLN_STATUS_COLORS.poor },
+      { status: "Critical", color: SPLN_STATUS_COLORS.critical },
+    ];
+    
+    let legendX = 14;
+    colorLegend.forEach((item, index) => {
+      // Kotak warna
+      doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+      doc.rect(legendX, currentY - 3, 4, 4, 'F');
+      
+      // Teks
+      doc.setFontSize(7);
+      doc.setTextColor(item.color[0], item.color[1], item.color[2]);
+      doc.text(` ${item.status}`, legendX + 5, currentY);
+      
+      legendX += 35;
+    });
+    
+    // Footer halaman 3
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')} | Smart-Trafo PLN UPT Manado`, 105, 287, { align: "center" });
 
     // ============================================
     // SAVE PDF
@@ -654,174 +1165,14 @@ export const generatePDFBlob = (data) => {
       format: "a4"
     });
     
-    const kondisiInfo = getKondisi(data.status_ieee, data);
-    let currentY = 15;
+    // Hitung TDCG
+    const tdcgValue = calculateTDCG(data);
     
-    // ============================================
-    // 1. HEADER - Standar IEEE
-    // ============================================
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("Standar: IEEE C57.104-2019", 14, currentY);
+    // Gunakan status_ieee dari hasil AI jika ada, kalau tidak fallback ke perhitungan TDCG
+    const ieeeKondisi = parseIEEEStatusFromAI(data.status_ieee, tdcgValue);
+    const splnKondisi = getSPLNKondisi(tdcgValue);
     
-    currentY += 10;
-    
-    // ============================================
-    // 2. IDENTITAS TRANSFORMATOR & DATA SAMPLING
-    // ============================================
-    
-    // Judul Identitas Transformator (Kiri)
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 139, 139); // Teal color
-    doc.text("Identitas Transformator", 14, currentY);
-    
-    // Judul Data Sampling (Kanan)
-    doc.text("Data Sampling", 120, currentY);
-    
-    currentY += 6;
-    
-    // Data Identitas Transformator (Kiri)
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    
-    const leftLabels = [
-      { label: "Gardu Induk", value: data.lokasi_gi || "" },
-      { label: "Trafo", value: data.nama_trafo || "" },
-      { label: "Merk Trafo", value: data.merk_trafo || "" },
-      { label: "No. Seri Trafo", value: data.serial_number || "" },
-      { label: "Tahun", value: data.tahun_pembuatan || "" },
-      { label: "Volt", value: data.level_tegangan || "" },
-    ];
-    
-    const rightLabels = [
-      { label: "Tanggal Tes", value: data.tanggal_sampling || "" },
-      { label: "Petugas", value: data.diambil_oleh || "" },
-    ];
-    
-    // Gambar data kiri
-    leftLabels.forEach((item, index) => {
-      const y = currentY + (index * 5);
-      doc.setTextColor(0, 139, 139);
-      doc.text(item.label, 14, y);
-      doc.setTextColor(0, 0, 0);
-      doc.text(":", 55, y);
-      doc.text(String(item.value), 60, y);
-    });
-    
-    // Gambar data kanan
-    rightLabels.forEach((item, index) => {
-      const y = currentY + (index * 5);
-      doc.setTextColor(0, 139, 139);
-      doc.text(item.label, 120, y);
-      doc.setTextColor(0, 0, 0);
-      doc.text(":", 155, y);
-      doc.text(String(item.value), 160, y);
-    });
-    
-    currentY += 35;
-    
-    // DGA TABLE
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("DGA (Dissolved Gas Anaylsis)", 14, currentY);
-    currentY += 5;
-    
-    const tdcgValue = Math.round(
-      (parseFloat(data.h2) || 0) + 
-      (parseFloat(data.ch4) || 0) + 
-      (parseFloat(data.c2h2) || 0) + 
-      (parseFloat(data.c2h4) || 0) + 
-      (parseFloat(data.c2h6) || 0) + 
-      (parseFloat(data.co) || 0)
-    );
-    
-    const dgaTableData = [
-      ["Hidrogen (H2)", data.h2 || 0],
-      ["Metana (CH4)", data.ch4 || 0],
-      ["Asetilena (C2H2)", data.c2h2 || 0],
-      ["Etilen (C2H4)", data.c2h4 || 0],
-      ["Etana (C2H6)", data.c2h6 || 0],
-      ["Karbon Monoksida (CO)", data.co || 0],
-      ["Karbon Dioksida (CO2)", data.co2 || 0],
-    ];
-    
-    autoTable(doc, {
-      startY: currentY,
-      head: [["PARAMETER UJI", "HASIL (ppmv)"]],
-      body: dgaTableData,
-      theme: "grid",
-      headStyles: { fillColor: [0, 139, 139], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 10 },
-      bodyStyles: { halign: "center", fontSize: 10 },
-      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 80 } },
-      styles: { cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2 },
-      tableWidth: 160,
-      margin: { left: 14 },
-    });
-    
-    let tdcgY = doc.lastAutoTable.finalY;
-    
-    autoTable(doc, {
-      startY: tdcgY,
-      body: [
-        [{ content: "HASIL TDCG", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
-         { content: tdcgValue, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
-        [{ content: "STATUS KONDISI", styles: { textColor: [0, 0, 0], fontStyle: "bold" } }, 
-         { content: `Kondisi ${kondisiInfo.kondisi}`, styles: { textColor: kondisiInfo.color, fontStyle: "bold" } }],
-      ],
-      theme: "grid",
-      bodyStyles: { halign: "center", fontSize: 10 },
-      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 80 } },
-      styles: { cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2 },
-      tableWidth: 160,
-      margin: { left: 14 },
-    });
-    
-    currentY = doc.lastAutoTable.finalY + 8;
-    
-    // KONDISI STATUS (Kiri) & DUVAL PENTAGON (Kanan)
-    const kondisiStartY = currentY;
-    
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("Kondisi Status", 14, currentY);
-    currentY += 6;
-    
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 1", 20, currentY);
-    doc.setTextColor(0, 128, 0);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Normal. Lanjut monitoring.", 42, currentY);
-    currentY += 5;
-    
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 2", 20, currentY);
-    doc.setTextColor(255, 165, 0);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Waspada. Cek beban & interval uji.", 42, currentY);
-    currentY += 5;
-    
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    doc.text("\u2022", 16, currentY);
-    doc.text("Kondisi 3", 20, currentY);
-    doc.setTextColor(220, 50, 50);
-    doc.setFont("helvetica", "bold");
-    doc.text(": Bahaya. Indikasi kerusakan aktif.", 42, currentY);
-    
-    // Duval Pentagon (Kanan)
-    const pentagonCenterX = 150;
-    const pentagonCenterY = kondisiStartY + 22;
-    const pentagonSize = 42;
-    
+    // Gas data untuk pentagon
     const gasData = {
       h2: parseFloat(data.h2) || 0,
       ch4: parseFloat(data.ch4) || 0,
@@ -830,50 +1181,292 @@ export const generatePDFBlob = (data) => {
       c2h2: parseFloat(data.c2h2) || 0
     };
     
-    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    // Deteksi zona Duval
+    const detectedZone = detectDuvalZone(gasData);
     
-    // Tabel dimulai setelah pentagon selesai tapi dengan margin minimal
-    const pentagonBottomY = pentagonCenterY + (pentagonSize * 0.95);
-    currentY = pentagonBottomY + -14;
+    let currentY = 15;
     
-    // IEEE REFERENCE TABLE
-    doc.setFontSize(11);
+    // ============================================
+    // HALAMAN 1: LAPORAN HASIL UJI DGA
+    // ============================================
+    
+    // Header Judul
+    doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
-    doc.text("Standar: IEEE Std C57.104-2019", 14, currentY);
+    doc.text("LAPORAN HASIL UJI DGA", 14, currentY);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 100, 100);
+    doc.text("(Dissolved Gas Analysis)", 80, currentY);
+    
+    currentY += 10;
+    
+    // IDENTITAS TRANSFORMATOR & DATA SAMPLING
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Identitas Transformator", 14, currentY);
+    doc.text("Data Sampling", 120, currentY);
+    
     currentY += 5;
     
-    const ieeeReferenceData = [
-      [{ content: "Hidrogen (H2)", styles: { textColor: [0, 139, 139] } }, { content: "100 ppm", styles: { textColor: [220, 50, 50] } }, "Partial Discharge / Stray Gassing"],
-      [{ content: "Metana (CH4)", styles: { textColor: [0, 139, 139] } }, { content: "120 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Minyak"],
-      [{ content: "Asetilen (C2H2)", styles: { textColor: [0, 139, 139] } }, { content: "1 ppm", styles: { textColor: [220, 50, 50] } }, "Arcing (Busur Api) - SANGAT KRITIS"],
-      [{ content: "Etilen (C2H4)", styles: { textColor: [0, 139, 139] } }, { content: "50 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Tinggi (>700\u00B0C)"],
-      [{ content: "Etana (C2H6)", styles: { textColor: [0, 139, 139] } }, { content: "65 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Menengah"],
-      [{ content: "Karbon Monoksida (CO)", styles: { textColor: [0, 139, 139] } }, { content: "350 ppm", styles: { textColor: [220, 50, 50] } }, "Degradasi Kertas Isolasi"],
-      [{ content: "Karbon Dioksida (CO2)", styles: { textColor: [0, 139, 139] } }, { content: "2500 ppm", styles: { textColor: [220, 50, 50] } }, "Penuaan Kertas / Oksidasi"],
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    
+    const leftLabels = [
+      { label: "Gardu Induk", value: data.lokasi_gi || "-" },
+      { label: "Trafo", value: data.nama_trafo || "-" },
+      { label: "Merk Trafo", value: data.merk_trafo || "-" },
+      { label: "No. Seri Trafo", value: data.serial_number || "-" },
+      { label: "Tahun", value: data.tahun_pembuatan || "-" },
+      { label: "Volt", value: data.level_tegangan || "-" },
+    ];
+    
+    const rightLabels = [
+      { label: "Tanggal Tes", value: data.tanggal_sampling || "-" },
+      { label: "Petugas", value: data.diambil_oleh || "-" },
+    ];
+    
+    leftLabels.forEach((item, index) => {
+      const y = currentY + (index * 5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(item.label, 14, y);
+      doc.text(":", 48, y);
+      doc.text(String(item.value), 52, y);
+    });
+    
+    rightLabels.forEach((item, index) => {
+      const y = currentY + (index * 5);
+      doc.setTextColor(0, 0, 0);
+      doc.text(item.label, 120, y);
+      doc.text(":", 150, y);
+      doc.text(String(item.value), 154, y);
+    });
+    
+    currentY += 45;
+    
+    // DUA TABEL SIDE BY SIDE
+    const tableStartY = currentY;
+    const tableWidth = 88;
+    const leftTableX = 14;
+    const rightTableX = 108;
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 139);
+    doc.text("Standar (IEEE C57.104-2019)", leftTableX, currentY);
+    doc.setTextColor(139, 0, 0);
+    doc.text("Standar (SPLN T5.004-4: 2016)", rightTableX, currentY);
+    
+    currentY += 3;
+    
+    const getIEEEValueColor = (gas, value) => {
+      const v = parseFloat(value) || 0;
+      const limit = IEEE_LIMITS[gas];
+      if (v >= limit) return [220, 50, 50];
+      return [0, 128, 0];
+    };
+    
+    const ieeeTableBody = [
+      ["Hidrogen (H2)", { content: String(data.h2 || 0), styles: { textColor: getIEEEValueColor("h2", data.h2) } }, "100 ppm"],
+      ["Metana (CH4)", { content: String(data.ch4 || 0), styles: { textColor: getIEEEValueColor("ch4", data.ch4) } }, "120 ppm"],
+      ["Asetilena (C2H2)", { content: String(data.c2h2 || 0), styles: { textColor: getIEEEValueColor("c2h2", data.c2h2) } }, "1 ppm"],
+      ["Etilen (C2H4)", { content: String(data.c2h4 || 0), styles: { textColor: getIEEEValueColor("c2h4", data.c2h4) } }, "50 ppm"],
+      ["Etana (C2H6)", { content: String(data.c2h6 || 0), styles: { textColor: getIEEEValueColor("c2h6", data.c2h6) } }, "65 ppm"],
+      ["Karbon Monoksida (CO)", { content: String(data.co || 0), styles: { textColor: getIEEEValueColor("co", data.co) } }, "350 ppm"],
+      ["Karbon Dioksida (CO2)", { content: String(data.co2 || 0), styles: { textColor: getIEEEValueColor("co2", data.co2) } }, "2500 ppm"],
     ];
     
     autoTable(doc, {
       startY: currentY,
-      head: [["Gas", "Limit (ppm)", "Indikasi"]],
-      body: ieeeReferenceData,
+      head: [["PARAMETER UJI", "HASIL\n(ppm)", "Batas\nAtas"]],
+      body: ieeeTableBody,
       theme: "grid",
-      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 10 },
-      bodyStyles: { fontSize: 9 },
-      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 30, halign: "center" }, 2: { cellWidth: 80 } },
-      styles: { cellPadding: 2.5, lineColor: [0, 0, 0], lineWidth: 0.2 },
-      tableWidth: 160,
-      margin: { left: 14 },
+      headStyles: { fillColor: [0, 100, 150], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 8, cellPadding: 1.5 },
+      bodyStyles: { fontSize: 8, cellPadding: 1.5 },
+      columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 20, halign: "center" }, 2: { cellWidth: 20, halign: "center", textColor: [220, 50, 50] } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
+      tableWidth: tableWidth - 6,
+      margin: { left: leftTableX },
     });
     
+    let ieeeTableEndY = doc.lastAutoTable.finalY;
+    
+    autoTable(doc, {
+      startY: ieeeTableEndY,
+      body: [
+        [{ content: "HASIL TDCG", styles: { fontStyle: "bold" } }, { content: String(tdcgValue), colSpan: 2, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } }],
+        [{ content: "KONDISI STATUS", styles: { fontStyle: "bold" } }, { content: `Kondisi ${ieeeKondisi.kondisi}`, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } }, { content: ieeeKondisi.text, styles: { halign: "center", textColor: ieeeKondisi.color, fontStyle: "bold" } }],
+      ],
+      theme: "grid",
+      bodyStyles: { fontSize: 8, cellPadding: 1.5 },
+      columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 20, halign: "center" }, 2: { cellWidth: 20, halign: "center" } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
+      tableWidth: tableWidth - 6,
+      margin: { left: leftTableX },
+    });
+    
+    // SPLN Table
+    const splnTableBody = [
+      ["Hidrogen (H2)", { content: String(data.h2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("h2", data.h2).status, styles: { textColor: getSPLNGasStatus("h2", data.h2).color } }],
+      ["Metana (CH4)", { content: String(data.ch4 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("ch4", data.ch4).status, styles: { textColor: getSPLNGasStatus("ch4", data.ch4).color } }],
+      ["Asetilena (C2H2)", { content: String(data.c2h2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h2", data.c2h2).status, styles: { textColor: getSPLNGasStatus("c2h2", data.c2h2).color } }],
+      ["Etilen (C2H4)", { content: String(data.c2h4 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h4", data.c2h4).status, styles: { textColor: getSPLNGasStatus("c2h4", data.c2h4).color } }],
+      ["Etana (C2H6)", { content: String(data.c2h6 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("c2h6", data.c2h6).status, styles: { textColor: getSPLNGasStatus("c2h6", data.c2h6).color } }],
+      ["Karbon Monoksida (CO)", { content: String(data.co || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("co", data.co).status, styles: { textColor: getSPLNGasStatus("co", data.co).color } }],
+      ["Karbon Dioksida (CO2)", { content: String(data.co2 || 0), styles: { textColor: [0, 0, 0] } }, { content: getSPLNGasStatus("co2", data.co2).status, styles: { textColor: getSPLNGasStatus("co2", data.co2).color } }],
+    ];
+    
+    autoTable(doc, {
+      startY: tableStartY + 3,
+      head: [["PARAMETER UJI", "HASIL\n(ppm)", "Status"]],
+      body: splnTableBody,
+      theme: "grid",
+      headStyles: { fillColor: [139, 69, 19], textColor: 255, fontStyle: "bold", halign: "center", fontSize: 8, cellPadding: 1.5 },
+      bodyStyles: { fontSize: 8, cellPadding: 1.5 },
+      columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 20, halign: "center" }, 2: { cellWidth: 24, halign: "center" } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
+      tableWidth: tableWidth,
+      margin: { left: rightTableX },
+    });
+    
+    let splnTableEndY = doc.lastAutoTable.finalY;
+    
+    autoTable(doc, {
+      startY: splnTableEndY,
+      body: [
+        [{ content: String(tdcgValue), colSpan: 3, styles: { halign: "center", textColor: splnKondisi.color, fontStyle: "bold" } }],
+        [{ content: `Kondisi ${splnKondisi.kondisi}`, colSpan: 3, styles: { halign: "center", textColor: splnKondisi.color, fontStyle: "bold" } }],
+      ],
+      theme: "grid",
+      bodyStyles: { fontSize: 8, cellPadding: 1.5 },
+      columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 20, halign: "center" }, 2: { cellWidth: 24, halign: "center" } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.2 },
+      tableWidth: tableWidth,
+      margin: { left: rightTableX },
+    });
+    
+    currentY = Math.max(doc.lastAutoTable.finalY, ieeeTableEndY + 15) + 8;
+    
+    // KONDISI STATUS
+    const kondisiStartY = currentY;
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 139);
+    doc.text("Kondisi Status (IEEE C57.104-2019)", leftTableX, currentY);
+    
+    currentY += 5;
+    
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 1 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi1[0], IEEE_COLORS.kondisi1[1], IEEE_COLORS.kondisi1[2]);
+    doc.setFont("helvetica", "bold");
+    doc.text("Normal. Lanjut monitoring.", leftTableX + 22, currentY);
+    
+    currentY += 4;
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 2 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi2[0], IEEE_COLORS.kondisi2[1], IEEE_COLORS.kondisi2[2]);
+    doc.setFont("helvetica", "bold");
+    doc.text("Waspada. Cek beban & interval uji.", leftTableX + 22, currentY);
+    
+    currentY += 4;
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    doc.text("- Kondisi 3 :", leftTableX, currentY);
+    doc.setTextColor(IEEE_COLORS.kondisi3[0], IEEE_COLORS.kondisi3[1], IEEE_COLORS.kondisi3[2]);
+    doc.setFont("helvetica", "bold");
+    doc.text("Bahaya. Indikasi kerusakan aktif.", leftTableX + 22, currentY);
+    
+    // SPLN Kondisi table
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(139, 0, 0);
+    doc.text("Kondisi Status (SPLN T5.004-4: 2016)", rightTableX, kondisiStartY);
+    
+    autoTable(doc, {
+      startY: kondisiStartY + 3,
+      head: [["Status", "Limit TDCG", "Tindakan"]],
+      body: [
+        [{ content: "Kondisi 1", styles: { textColor: [0, 0, 0] } }, { content: "<= 720", styles: { textColor: [0, 0, 139] } }, { content: "Normal", styles: { textColor: SPLN_COLORS.kondisi1 } }],
+        [{ content: "Kondisi 2", styles: { textColor: [0, 0, 0] } }, { content: "<=1920", styles: { textColor: [0, 0, 139] } }, { content: "Waspada", styles: { textColor: SPLN_COLORS.kondisi2 } }],
+        [{ content: "Kondisi 3", styles: { textColor: [0, 0, 0] } }, { content: "<=4630", styles: { textColor: [0, 0, 139] } }, { content: "Peringatan", styles: { textColor: SPLN_COLORS.kondisi3 } }],
+        [{ content: "Kondisi 4", styles: { textColor: [0, 0, 0] } }, { content: ">=4631", styles: { textColor: [0, 0, 139] } }, { content: "Bahaya", styles: { textColor: SPLN_COLORS.kondisi4 } }],
+      ],
+      theme: "grid",
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 7, cellPadding: 1 },
+      bodyStyles: { fontSize: 7, cellPadding: 1 },
+      columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 22, halign: "center" }, 2: { cellWidth: 22, halign: "center" } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.15 },
+      tableWidth: 66,
+      margin: { left: rightTableX },
+    });
+    
+    currentY = Math.max(currentY + 10, doc.lastAutoTable.finalY + 20);
+    
+    // KODE DIAGNOSA & DUVAL PENTAGON
+    const diagStartY = currentY;
+    
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Duval Pentagon - Kode Diagnosa:", leftTableX, currentY);
+    
+    currentY += 5;
+    
+    const faultTypes = [
+      { code: "PD", desc: "Partial Discharge (Peluasan Parsial)" },
+      { code: "D1", desc: "Discharge Low Energy (Percikan kecil)" },
+      { code: "D2", desc: "Discharge High Energy (Arcing kuat)" },
+      { code: "T1", desc: "Thermal Fault < 300°C" },
+      { code: "T2", desc: "Thermal Fault 300°C - 700°C" },
+      { code: "T3", desc: "Thermal Fault > 700°C" },
+    ];
+    
+    faultTypes.forEach((fault, index) => {
+      const y = currentY + (index * 5);
+      const isDetected = detectedZone === fault.code;
+      
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${fault.code}:`, leftTableX, y);
+      
+      if (isDetected) {
+        doc.setTextColor(220, 50, 50);
+        doc.setFont("helvetica", "bold");
+      } else {
+        doc.setTextColor(80, 80, 80);
+        doc.setFont("helvetica", "normal");
+      }
+      doc.text(fault.desc, leftTableX + 10, y);
+    });
+    
+    // Duval Pentagon
+    const pentagonCenterX = 155;
+    const pentagonCenterY = diagStartY + 22;
+    const pentagonSize = 48;
+    
+    drawDuvalPentagon(doc, pentagonCenterX, pentagonCenterY, pentagonSize, gasData);
+    
+    // Footer halaman 1
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')} | Smart-Trafo PLN UPT Manado`, 105, 287, { align: "center" });
+    
     // ============================================
-    // HALAMAN KEDUA: KESIMPULAN ANALISIS
+    // HALAMAN 2: KESIMPULAN ANALISIS AI
     // ============================================
     doc.addPage();
     
     currentY = 15;
     
-    // Header halaman 2 - Standar IEEE (sama seperti halaman 1)
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -881,7 +1474,6 @@ export const generatePDFBlob = (data) => {
     
     currentY += 10;
     
-    // Judul Kesimpulan
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 139, 139);
@@ -889,10 +1481,8 @@ export const generatePDFBlob = (data) => {
     
     currentY += 6;
     
-    // Info Transformator
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
     
     const infoLabelsBlob = [
       { label: "Gardu Induk", value: data.lokasi_gi || "-" },
@@ -911,63 +1501,158 @@ export const generatePDFBlob = (data) => {
     
     currentY += 20;
     
-    // Tentukan apakah ada hasil AI
     const hasAIResult = data.hasil_ai && data.hasil_ai.trim() !== "" && data.hasil_ai !== "AI sedang menganalisis...";
     
-    // Tabel Kesimpulan
     const kesimpulanContent = hasAIResult 
       ? data.hasil_ai.replace(/\\n/g, '\n').replace(/\*\*/g, '').replace(/\*/g, '•').trim()
       : generateAutoKesimpulan(data);
     
     autoTable(doc, {
       startY: currentY,
-      head: [[{ 
-        content: hasAIResult ? "KESIMPULAN & REKOMENDASI by VOLTY AI" : "KESIMPULAN & REKOMENDASI by VOLTY AI", 
-        styles: { halign: "left" } 
-      }]],
+      head: [[{ content: "KESIMPULAN & REKOMENDASI by VOLTY AI", styles: { halign: "left" } }]],
       body: [[kesimpulanContent]],
       theme: "grid",
-      headStyles: {
-        fillColor: [0, 139, 139],
-        textColor: 255,
-        fontStyle: "bold",
-        fontSize: 10,
-      },
-      bodyStyles: {
-        fontSize: 9,
-        cellPadding: 6,
-        textColor: [50, 50, 50],
-        lineHeight: 1.5,
-      },
-      columnStyles: {
-        0: { cellWidth: 175 },
-      },
-      styles: {
-        cellPadding: 4,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.2,
-        overflow: 'linebreak',
-      },
+      headStyles: { fillColor: [0, 139, 139], textColor: 255, fontStyle: "bold", fontSize: 10 },
+      bodyStyles: { fontSize: 9, cellPadding: 6, textColor: [50, 50, 50], lineHeight: 1.5 },
+      columnStyles: { 0: { cellWidth: 175 } },
+      styles: { cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.2, overflow: 'linebreak' },
       tableWidth: 175,
       margin: { left: 14 },
     });
     
-    // Footer halaman kedua
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
     doc.setFont("helvetica", "italic");
-    doc.text(
-      hasAIResult ? "Analisis dihasilkan oleh VOLTY AI Assistant - PLN UPT Manado" : "Rekomendasi otomatis berdasarkan IEEE C57.104-2019",
-      105,
-      285,
-      { align: "center" }
-    );
-    doc.text(
-      `Generated: ${new Date().toLocaleString('id-ID')}`,
-      105,
-      290,
-      { align: "center" }
-    );
+    doc.text(hasAIResult ? "Analisis dihasilkan oleh VOLTY AI Assistant - PLN UPT Manado" : "Rekomendasi otomatis berdasarkan IEEE C57.104-2019", 105, 285, { align: "center" });
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')}`, 105, 290, { align: "center" });
+    
+    // ============================================
+    // HALAMAN 3: PANDUAN STANDAR
+    // ============================================
+    doc.addPage();
+    
+    currentY = 15;
+    
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("PANDUAN STANDAR", 14, currentY);
+    
+    currentY += 10;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Standar: IEEE Std C57.104-2019", 14, currentY);
+    
+    currentY += 5;
+    
+    const ieeeGuideData = [
+      [{ content: "Hidrogen (H2)", styles: { textColor: [0, 139, 139] } }, { content: "100 ppm", styles: { textColor: [220, 50, 50] } }, "Partial Discharge / Stray Gassing"],
+      [{ content: "Metana (CH4)", styles: { textColor: [0, 139, 139] } }, { content: "120 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Minyak"],
+      [{ content: "Asetilen (C2H2)", styles: { textColor: [0, 139, 139] } }, { content: "1 ppm", styles: { textColor: [220, 50, 50] } }, "Arcing (Busur Api) - SANGAT KRITIS"],
+      [{ content: "Etilen (C2H4)", styles: { textColor: [0, 139, 139] } }, { content: "50 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Tinggi (>700°C)"],
+      [{ content: "Etana (C2H6)", styles: { textColor: [0, 139, 139] } }, { content: "65 ppm", styles: { textColor: [220, 50, 50] } }, "Overheating Suhu Menengah"],
+      [{ content: "Karbon Monoksida (CO)", styles: { textColor: [0, 139, 139] } }, { content: "350 ppm", styles: { textColor: [220, 50, 50] } }, "Degradasi Kertas Isolasi"],
+      [{ content: "Karbon Dioksida (CO2)", styles: { textColor: [0, 139, 139] } }, { content: "2500 ppm", styles: { textColor: [220, 50, 50] } }, "Penuaan Kertas / Oksidasi"],
+    ];
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Gas", "Limit (ppm)", "Indikasi"]],
+      body: ieeeGuideData,
+      theme: "grid",
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 50 }, 1: { cellWidth: 30, halign: "center" }, 2: { cellWidth: 90 } },
+      styles: { cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.2 },
+      tableWidth: 170,
+      margin: { left: 14 },
+    });
+    
+    currentY = doc.lastAutoTable.finalY + 10;
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Standar: SPLN T5.004-4: 2016", 14, currentY);
+    
+    currentY += 5;
+    
+    const splnGuideLeft = [
+      ["Hidrogen (H2)", "<30 = Very Good\n<=99 = Good\n<=699 = Fair\n<=1800 = Poor\n>1800 = Critical"],
+      ["Metana (CH4)", "<121 = Very Good\n<=400 = Good\n<=1200 = Fair\n<=1500 = Poor\n>1500 = Critical"],
+      ["Asetilena (C2H2)", "=0 = Very Good\n<=1 = Good\n<=10 = Fair\n<=35 = Poor\n>35 = Critical"],
+    ];
+    
+    const splnGuideRight = [
+      ["Etana (C2H6)", "<65 = Very Good\n<=100 = Good\n<=200 = Fair\n<=500 = Poor\n>500 = Critical"],
+      ["Karbon Monoksida (CO)", "<=350 = Very Good\n<=570 = Good\n<=2500 = Fair\n<=5000 = Poor\n>5000 = Critical"],
+      ["Karbon Dioksida (CO2)", "<=2500 = Very Good\n<=4000 = Good\n<=10000 = Fair\n<=17500 = Poor\n>17500 = Critical"],
+    ];
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Senyawa", "Limit"]],
+      body: splnGuideLeft.map(row => [
+        { content: row[0], styles: { textColor: [0, 139, 139], fontStyle: "bold" } },
+        { content: row[1], styles: { fontSize: 6 } }
+      ]),
+      theme: "grid",
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 8 },
+      bodyStyles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 45 } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.15 },
+      tableWidth: 80,
+      margin: { left: 14 },
+    });
+    
+    autoTable(doc, {
+      startY: currentY,
+      head: [["Senyawa", "Limit"]],
+      body: splnGuideRight.map(row => [
+        { content: row[0], styles: { textColor: [0, 139, 139], fontStyle: "bold" } },
+        { content: row[1], styles: { fontSize: 6 } }
+      ]),
+      theme: "grid",
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold", fontSize: 8 },
+      bodyStyles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 50 } },
+      styles: { lineColor: [0, 0, 0], lineWidth: 0.15 },
+      tableWidth: 90,
+      margin: { left: 105 },
+    });
+    
+    currentY = doc.lastAutoTable.finalY + 10;
+    
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Keterangan Warna Status SPLN:", 14, currentY);
+    
+    currentY += 5;
+    
+    const colorLegend = [
+      { status: "Very Good", color: SPLN_STATUS_COLORS.veryGood },
+      { status: "Good", color: SPLN_STATUS_COLORS.good },
+      { status: "Fair", color: SPLN_STATUS_COLORS.fair },
+      { status: "Poor", color: SPLN_STATUS_COLORS.poor },
+      { status: "Critical", color: SPLN_STATUS_COLORS.critical },
+    ];
+    
+    let legendX = 14;
+    colorLegend.forEach((item) => {
+      doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+      doc.rect(legendX, currentY - 3, 4, 4, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(item.color[0], item.color[1], item.color[2]);
+      doc.text(` ${item.status}`, legendX + 5, currentY);
+      legendX += 35;
+    });
+    
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont("helvetica", "italic");
+    doc.text(`Generated: ${new Date().toLocaleString('id-ID')} | Smart-Trafo PLN UPT Manado`, 105, 287, { align: "center" });
     
     return doc.output('blob');
   } catch (error) {

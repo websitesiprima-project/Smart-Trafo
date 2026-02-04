@@ -401,6 +401,9 @@ const GuidePage = ({ isDarkMode, initialTab = "ieee" }) => {
                       <li>
                         <strong>T3:</strong> Thermal Fault &gt; 700°C
                       </li>
+                      <li>
+                        <strong>S :</strong> Stray Gassing
+                      </li>
                     </ul>
                   </div>
                   <div
