@@ -25,6 +25,9 @@ export default function UnitManagementPage({
   // State Form (HANYA untuk GI, karena ULTG dibuat di User Management)
   const [newGi, setNewGi] = useState({ ultg: "", name: "", lat: "", lon: "" });
 
+  // State untuk modal delete GI
+  const [deleteGiModal, setDeleteGiModal] = useState({ show: false, gi: null, ultg: null });
+
   const fetchHierarchy = async () => {
     setLoading(true);
     try {
@@ -78,12 +81,12 @@ export default function UnitManagementPage({
   const handleDeleteUltg = async (nama) => {
     if (
       !confirm(
-        `PERINGATAN: Menghapus ULTG ${nama} akan menghapus SEMUA data GI di dalamnya.\n\nLanjutkan?`,
+        `PERINGATAN: Menghapus ULTG ${nama} akan menghapus SEMUA:\n- Data GI di dalamnya\n- Aset transformator terkait\n- Riwayat uji DGA terkait\n\nLanjutkan?`,
       )
     )
       return;
 
-    const toastId = toast.loading("Menghapus Unit...");
+    const toastId = toast.loading("Menghapus Unit dan semua data terkait...");
     try {
       const res = await fetch(
         `${API_URL}/admin/master/delete-ultg/${nama}?requester_email=${session.user.email}`,
@@ -92,29 +95,36 @@ export default function UnitManagementPage({
       const data = await res.json();
       if (data.status !== "Sukses") throw new Error(data.msg);
 
-      toast.success("Unit berhasil dihapus", { id: toastId });
+      toast.success("Unit dan semua data terkait berhasil dihapus", { id: toastId });
       fetchHierarchy();
     } catch (err) {
       toast.error(err.message, { id: toastId });
     }
   };
 
-  const handleDeleteGi = async (giName, ultgName) => {
-    if (!confirm(`Hapus ${giName}?`)) return;
+  const handleDeleteGi = (giName, ultgName) => {
+    setDeleteGiModal({ show: true, gi: giName, ultg: ultgName });
+  };
+
+  const confirmDeleteGi = async () => {
+    const { gi, ultg } = deleteGiModal;
+    setDeleteGiModal({ show: false, gi: null, ultg: null });
+    
+    const toastId = toast.loading("Menghapus GI dan data terkait...");
     try {
       const res = await fetch(
-        `${API_URL}/admin/master/delete-gi?nama_gi=${giName}&nama_ultg=${ultgName}&requester_email=${session.user.email}`,
+        `${API_URL}/admin/master/delete-gi?nama_gi=${gi}&nama_ultg=${ultg}&requester_email=${session.user.email}`,
         { method: "DELETE" },
       );
       const data = await res.json();
       if (data.status === "Sukses") {
-        toast.success("GI Terhapus");
+        toast.success("GI dan semua aset terkait berhasil dihapus", { id: toastId });
         fetchHierarchy();
       } else {
-        toast.error(data.msg);
+        toast.error(data.msg, { id: toastId });
       }
     } catch (e) {
-      toast.error("Gagal hapus");
+      toast.error("Gagal hapus GI", { id: toastId });
     }
   };
 
@@ -309,6 +319,93 @@ export default function UnitManagementPage({
           ))}
         </div>
       </div>
+
+      {/* Modal Delete GI */}
+      {deleteGiModal.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setDeleteGiModal({ show: false, gi: null, ultg: null })}
+          />
+          
+          {/* Modal Content */}
+          <div className={`relative w-full max-w-md ${isDarkMode ? 'bg-slate-800' : 'bg-white'} rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300`}>
+            {/* Icon Header */}
+            <div className="flex flex-col items-center pt-8 pb-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-red-500/20 blur-xl rounded-full animate-pulse" />
+                <div className="relative bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-full">
+                  <AlertTriangle size={40} className="text-white" />
+                </div>
+              </div>
+              <h3 className={`mt-6 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                Hapus Gardu Induk?
+              </h3>
+              <p className={`mt-2 text-center text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Tindakan ini tidak dapat dibatalkan
+              </p>
+            </div>
+
+            {/* Warning Content */}
+            <div className="px-8 pb-6">
+              <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-slate-700/50' : 'bg-slate-50'} border ${isDarkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                <div className="flex items-start gap-3 mb-3">
+                  <MapPin size={18} className="text-[#1B7A8F] mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className={`font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {deleteGiModal.gi}
+                    </p>
+                    <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      ULTG {deleteGiModal.ultg}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className={`mt-4 pt-4 border-t ${isDarkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                  <p className={`text-sm font-medium mb-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    Data yang akan terhapus:
+                  </p>
+                  <ul className="space-y-2">
+                    <li className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>
+                        Semua aset transformator di GI ini
+                      </span>
+                    </li>
+                    <li className="flex items-center gap-2 text-sm">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>
+                        Data lokasi dan koordinat GI
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 px-8 pb-8">
+              <button
+                onClick={() => setDeleteGiModal({ show: false, gi: null, ultg: null })}
+                className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                  isDarkMode 
+                    ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmDeleteGi}
+                className="flex-1 px-4 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg shadow-red-500/30 hover:shadow-red-500/50"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

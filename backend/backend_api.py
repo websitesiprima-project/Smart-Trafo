@@ -1044,8 +1044,24 @@ def delete_master_ultg(nama_ultg: str, requester_email: str):
         if isinstance(rows[0], dict) and rows[0].get('role') != 'super_admin':
             return {"status": "Gagal", "msg": "Unauthorized"}
 
+        # 1. Dapatkan semua GI di bawah ULTG ini
+        ultg_res = public_client.table("master_ultg").select("id").eq("nama_ultg", nama_ultg).execute()
+        if ultg_res.data and len(ultg_res.data) > 0:
+            ultg_id = ultg_res.data[0].get('id')
+            gi_res = public_client.table("master_gi").select("nama_gi").eq("id_ultg", ultg_id).execute()
+            gi_list = [g['nama_gi'] for g in (gi_res.data or []) if isinstance(g, dict)]
+            
+            # 2. Hapus semua aset trafo dan riwayat uji terkait GI-GI tersebut
+            for gi_name in gi_list:
+                try:
+                    admin_client.table("assets_trafo").delete().eq("lokasi_gi", gi_name).execute()
+                    admin_client.table("riwayat_uji").delete().eq("lokasi_gi", gi_name).execute()
+                except Exception as del_err:
+                    print(f"Warning: Gagal hapus aset/riwayat untuk GI {gi_name}: {del_err}")
+        
+        # 3. Hapus ULTG (GI akan ikut terhapus jika ada foreign key cascade)
         admin_client.table("master_ultg").delete().eq("nama_ultg", nama_ultg).execute()
-        return {"status": "Sukses", "msg": f"ULTG {nama_ultg} dihapus."}
+        return {"status": "Sukses", "msg": f"ULTG {nama_ultg} beserta semua GI dan aset terkait berhasil dihapus."}
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
 
@@ -1114,7 +1130,20 @@ def delete_master_gi(nama_gi: str, nama_ultg: str, requester_email: str):
         if not isinstance(ultg_rows[0], dict): return {"status": "Error", "msg": "Data ULTG corrupt"}
         ultg_id = ultg_rows[0].get('id')
 
+        # 1. Hapus semua aset trafo terkait GI ini
+        try:
+            admin_client.table("assets_trafo").delete().eq("lokasi_gi", nama_gi).execute()
+        except Exception as asset_err:
+            print(f"Warning: Gagal hapus aset untuk GI {nama_gi}: {asset_err}")
+        
+        # 2. Hapus semua riwayat uji terkait GI ini
+        try:
+            admin_client.table("riwayat_uji").delete().eq("lokasi_gi", nama_gi).execute()
+        except Exception as riwayat_err:
+            print(f"Warning: Gagal hapus riwayat untuk GI {nama_gi}: {riwayat_err}")
+        
+        # 3. Hapus GI
         admin_client.table("master_gi").delete().match({"nama_gi": nama_gi, "id_ultg": ultg_id}).execute()
-        return {"status": "Sukses", "msg": "GI berhasil dihapus"}
+        return {"status": "Sukses", "msg": f"GI {nama_gi} beserta semua aset dan riwayat terkait berhasil dihapus"}
     except Exception as e:
         return {"status": "Error", "msg": str(e)}

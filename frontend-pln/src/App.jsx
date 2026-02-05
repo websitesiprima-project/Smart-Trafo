@@ -177,8 +177,13 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       handleSession(session);
+      // Redirect ke dashboard saat user baru login
+      if (event === "SIGNED_IN" && session) {
+        setActivePage("dashboard");
+        localStorage.setItem("pln-smart-trafo-activepage", "dashboard");
+      }
     });
 
     const safetyTimer = setTimeout(() => {
@@ -401,7 +406,15 @@ export default function Home() {
           <ArrowLeft size={16} /> Kembali
         </button>
         {/* LOGIN PAGE JUGA DI-SUSPENSE AGAR AMAN */}
-        <LoginPage onLoginSuccess={() => setShowLogin(false)} />
+        <LoginPage onLoginSuccess={() => {
+          setShowLogin(false);
+          setActivePage("dashboard");
+          localStorage.setItem("pln-smart-trafo-activepage", "dashboard");
+          // Refresh data setelah login
+          setTimeout(() => {
+            fetchHistory();
+          }, 500);
+        }} />
       </Suspense>
     ) : (
       <Suspense fallback={<LoadingScreen />}>
