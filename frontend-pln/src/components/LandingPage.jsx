@@ -334,7 +334,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
           <div className="order-1 md:order-2 space-y-6">
             <h2 className="text-3xl md:text-4xl font-bold leading-tight">
               Transformasi Pengujian DGA <br />
-              <span className="text-green-600">Dari Lab ke Digital</span>
+              <span className="text-blue-800">Dari Lab ke Digital</span>
             </h2>
             <p
               className={`text-lg leading-relaxed ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}
