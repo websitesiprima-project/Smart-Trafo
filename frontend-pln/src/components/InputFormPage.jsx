@@ -287,19 +287,6 @@ const InputFormPage = ({
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Suhu (°C)</label>
-                  <input
-                    type="number"
-                    name="suhu_sampel"
-                    value={
-                      formData.suhu_sampel === 0 ? "" : formData.suhu_sampel
-                    }
-                    onChange={handleChange}
-                    className={inputClass}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
                   <label className={labelClass}>Petugas</label>
                   <input
                     type="text"
