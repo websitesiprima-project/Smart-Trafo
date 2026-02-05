@@ -590,9 +590,12 @@ const HistoryPage = ({
                     className={`text-center ${thClass}`}
                     style={{ width: "50px" }}
                   >
+                    {/* ✅ ACCESSIBILITY: Button Label */}
                     <button
                       onClick={toggleSelectAll}
                       className="flex items-center justify-center w-full"
+                      aria-label="Pilih Semua"
+                      title="Pilih Semua"
                     >
                       {selectedIds.length === filteredData.length &&
                       filteredData.length > 0 ? (
@@ -688,10 +691,12 @@ const HistoryPage = ({
                     {!selectionMode && (
                       <td className={`text-center ${tdClass}`}>
                         <div className="flex justify-center gap-2">
-                          {/* Edit Button */}
+                          {/* ✅ ACCESSIBILITY: Button Labels */}
                           <div className="relative group">
                             <button
                               onClick={() => openEditModal(item)}
+                              aria-label="Edit Data"
+                              title="Edit Data"
                               className="p-2 text-orange-500 bg-orange-50 rounded hover:bg-orange-100 transition-colors"
                             >
                               <Edit2 size={16} />
@@ -701,10 +706,11 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* Detail Button */}
                           <div className="relative group">
                             <button
                               onClick={() => setSelectedItem(item)}
+                              aria-label="Lihat Detail"
+                              title="Lihat Detail"
                               className="p-2 text-blue-500 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
                             >
                               <Info size={16} />
@@ -714,10 +720,11 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* PDF Button */}
                           <div className="relative group">
                             <button
                               onClick={() => generatePDFFromTemplate(item)}
+                              aria-label="Download PDF"
+                              title="Download PDF"
                               className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100 transition-colors"
                             >
                               <Download size={16} />
@@ -727,10 +734,11 @@ const HistoryPage = ({
                               <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                             </div>
                           </div>
-                          {/* Delete Button */}
                           <div className="relative group">
                             <button
                               onClick={() => handleDelete(item.id)}
+                              aria-label="Hapus Data"
+                              title="Hapus Data"
                               className="p-2 text-red-500 bg-red-50 rounded hover:bg-red-100 transition-colors"
                             >
                               <Trash2 size={16} />
@@ -782,9 +790,12 @@ const HistoryPage = ({
           </span>
 
           <div className="flex gap-2">
+            {/* ✅ ACCESSIBILITY: Button Labels */}
             <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage((p) => p - 1)}
+              aria-label="Halaman Sebelumnya"
+              title="Halaman Sebelumnya"
               className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${isDarkMode ? "text-white" : "text-gray-800"}`}
             >
               <ChevronLeft size={18} />
@@ -792,6 +803,8 @@ const HistoryPage = ({
             <button
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage((p) => p + 1)}
+              aria-label="Halaman Selanjutnya"
+              title="Halaman Selanjutnya"
               className={`p-2 rounded hover:bg-gray-500/10 disabled:opacity-30 ${isDarkMode ? "text-white" : "text-gray-800"}`}
             >
               <ChevronRight size={18} />
@@ -827,11 +840,14 @@ const HistoryPage = ({
                   {selectedItem.nama_trafo} - {selectedItem.lokasi_gi}
                 </p>
               </div>
+              {/* ✅ ACCESSIBILITY: Button Label */}
               <button
                 onClick={() => {
                   setSelectedItem(null);
                   setIsEditing(false);
                 }}
+                aria-label="Tutup"
+                title="Tutup"
                 className="p-2 hover:bg-gray-500/20 rounded-full"
               >
                 <X size={20} />

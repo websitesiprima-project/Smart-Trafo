@@ -5,27 +5,31 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
-    // 1. Minify code agar lebih kecil
     minify: "terser",
-    // 2. Pecah file besar menjadi potongan kecil (Code Splitting)
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Pisahkan library besar ke file terpisah agar bisa di-cache browser
           if (id.includes("node_modules")) {
-            // --- BAGIAN INI DIHAPUS AGAR TIDAK CRASH ---
-            // if (id.includes("react-leaflet") || id.includes("leaflet")) {
-            //   return "leaflet-vendor";
-            // }
-            // -------------------------------------------
-
-            // Pisahkan Recharts (Grafik) karena filenya besar & aman dipisah
-            if (id.includes("recharts")) {
-              return "recharts-vendor";
+            // Pisahkan library besar agar tidak memblokir loading awal
+            if (id.includes("react") || id.includes("react-dom")) {
+              return "vendor-react";
             }
-
-            // Sisanya (termasuk React, Leaflet, Framer Motion, dll) gabung jadi satu
-            return "vendor";
+            if (id.includes("recharts")) {
+              return "vendor-charts";
+            }
+            if (id.includes("leaflet") || id.includes("react-leaflet")) {
+              return "vendor-maps";
+            }
+            if (id.includes("lucide-react")) {
+              return "vendor-icons"; // Lucide dipisah karena ukurannya besar
+            }
+            if (id.includes("framer-motion")) {
+              return "vendor-animation";
+            }
+            if (id.includes("supabase")) {
+              return "vendor-db";
+            }
+            return "vendor-utils";
           }
         },
       },

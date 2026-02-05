@@ -33,22 +33,23 @@ import {
 } from "recharts";
 
 // --- 1. SETUP IKON MAP ---
+// Pastikan Anda memiliki file gambar ini di folder /public/markers/
 const createCustomIcon = (status) => {
-  let iconUrl = "/markers/pin-normal.png";
+  let iconUrl = "/markers/pin-normal.png"; // Default Hijau
   const s = (status || "").toString().toUpperCase();
 
   if (s.includes("COND 3") || s.includes("KRITIS") || s.includes("BAHAYA")) {
-    iconUrl = "/markers/pin-critical.gif";
+    iconUrl = "/markers/pin-critical.gif"; // Merah/Gif
   } else if (s.includes("COND 2") || s.includes("WASPADA")) {
-    iconUrl = "/markers/pin-warning2.gif";
+    iconUrl = "/markers/pin-warning2.gif"; // Kuning/Orange
   }
 
   return L.icon({
     iconUrl: iconUrl,
     iconSize: [50, 50],
     iconAnchor: [25, 50],
-    popupAnchor: [0, 10],
-    className: "custom-marker-img",
+    popupAnchor: [0, -45],
+    className: "custom-marker-icon",
   });
 };
 
@@ -81,16 +82,16 @@ const formatDate = (dateString) => {
       });
 };
 
-// 🔥 TERIMA PROP unitMapping DARI APP.JSX
 const DashboardPage = ({
   isDarkMode,
   liveData = [],
   userRole,
   userUnit,
-  unitMapping = {},
+  unitMapping = {}, // 🔥 PROP PENTING: Data Struktur Unit & GI dari Database
 }) => {
   const safeLiveData = Array.isArray(liveData) ? liveData : [];
   const [selectedTrafo, setSelectedTrafo] = useState(null);
+  const [totalDbAssets, setTotalDbAssets] = useState(0);
 
   const [activeSeries, setActiveSeries] = useState(
     GAS_CONFIG.reduce((acc, gas) => {
@@ -102,26 +103,24 @@ const DashboardPage = ({
   const toggleSeries = (key) =>
     setActiveSeries((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const [totalDbAssets, setTotalDbAssets] = useState(0);
-
-  // --- 1. PROSES DATA GI DARI MAPPING DB (GLOBAL ACCESS) ---
+  // --- 2. PROSES DATA GI DARI UNIT MAPPING (DATABASE) ---
+  // Mengubah struktur { "ULTG A": [GI1, GI2] } menjadi Array [GI1, GI2, ...]
   const dynamicGIs = useMemo(() => {
     let list = [];
     if (!unitMapping || Object.keys(unitMapping).length === 0) return [];
 
     Object.entries(unitMapping).forEach(([ultgName, gis]) => {
-      // 🔥 FILTER DIHAPUS: Semua user (termasuk ULTG Barat) bisa melihat SEMUA aset
       if (Array.isArray(gis)) {
         const enrichedGIs = gis.map((gi) => {
-          // Cek koordinat, jika 0 atau null, pakai default (Manado Center) agar Pin tetap muncul
           let lat = parseFloat(gi.lat || 0);
           let lon = parseFloat(gi.lon || gi.lng || 0);
 
+          // Fallback coordinate jika data GI belum punya koordinat (Manado Center)
           const isInvalid = lat === 0 && lon === 0;
 
           return {
             ...gi,
-            ultg: ultgName,
+            ultg: ultgName, // Menyimpan nama ULTG induk
             lat: isInvalid ? 1.45 : lat,
             lon: isInvalid ? 124.84 : lon,
             isDefault: isInvalid,
@@ -132,12 +131,13 @@ const DashboardPage = ({
       }
     });
     return list;
-  }, [unitMapping]); // Hapus dependency userRole/userUnit agar tidak ter-filter
+  }, [unitMapping]);
 
   // --- FETCH TOTAL ASET DARI SUPABASE ---
   useEffect(() => {
     const fetchTotalAssets = async () => {
       try {
+        // Asumsi tabel 'assets_trafo' menyimpan data inventaris trafo
         const { count, error } = await supabase
           .from("assets_trafo")
           .select("*", { count: "exact", head: true });
@@ -151,6 +151,7 @@ const DashboardPage = ({
     fetchTotalAssets();
   }, []);
 
+  // Mencegah scroll body saat modal chart terbuka
   useEffect(() => {
     document.body.style.overflow = selectedTrafo ? "hidden" : "";
     return () => {
@@ -163,11 +164,11 @@ const DashboardPage = ({
     return name.toString().toUpperCase().trim().replace(/\s+/g, " ");
   };
 
-  // --- LOGIC 1: GLOBAL STATS (FIX: HITUNG ASET UNIK SAJA) ---
+  // --- LOGIC 3: GLOBAL STATS (Pie Chart & Cards) ---
   const globalStats = useMemo(() => {
-    // 1. Grouping berdasarkan Trafo Unik (Ambil data tanggal terbaru saja)
     const uniqueAssetsMap = new Map();
 
+    // Ambil data sampling terbaru per trafo
     safeLiveData.forEach((record) => {
       const key = `${normalizeName(record.lokasi_gi)}-${normalizeName(record.nama_trafo)}`;
       const existingRecord = uniqueAssetsMap.get(key);
@@ -211,7 +212,7 @@ const DashboardPage = ({
     };
   }, [safeLiveData]);
 
-  // --- LOGIC 2: TOP RANKING (MENGGUNAKAN LOGIC UNIK JUGA) ---
+  // --- LOGIC 4: TOP RANKING (Highest TDCG) ---
   const topTrafos = useMemo(() => {
     if (safeLiveData.length === 0) return [];
 
@@ -242,7 +243,7 @@ const DashboardPage = ({
       .slice(0, 5);
   }, [safeLiveData]);
 
-  // --- LOGIC 3: CHART DATA (MODAL) ---
+  // --- LOGIC 5: CHART DATA (Modal) ---
   const chartData = useMemo(() => {
     if (!selectedTrafo) return [];
     return safeLiveData
@@ -267,15 +268,17 @@ const DashboardPage = ({
       .sort((a, b) => new Date(a.dateOriginal) - new Date(b.dateOriginal));
   }, [selectedTrafo, safeLiveData]);
 
-  // --- LOGIC 4: FILTER LIST TRAFO DI POPUP MAP ---
+  // --- LOGIC 6: HELPER UTILS FOR MAP POPUP ---
   const getTrafoListByGI = (giName) => {
     if (!safeLiveData.length || !giName) return [];
     const targetGI = normalizeName(giName);
 
+    // Filter data sampling yang sesuai dengan GI yang diklik
     const records = safeLiveData.filter(
       (d) => normalizeName(d.lokasi_gi) === targetGI,
     );
 
+    // Ambil data terbaru per trafo
     const uniqueMap = new Map();
     records.forEach((rec) => {
       const unitName = normalizeName(rec.nama_trafo);
@@ -308,7 +311,7 @@ const DashboardPage = ({
     ? "bg-[#1e293b] border-slate-700"
     : "bg-white border-slate-200";
 
-  // --- MAP BOUNDS ---
+  // --- MAP BOUNDS CALCULATION ---
   const BOUNDS_PADDING_FACTOR = 0.25;
 
   const mapBounds = useMemo(() => {
@@ -345,6 +348,7 @@ const DashboardPage = ({
         .custom-popup-scroll::-webkit-scrollbar { width: 3px; }
         .custom-popup-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
         .custom-popup-scroll::-webkit-scrollbar-thumb { background: #bbb; border-radius: 3px; }
+        .custom-marker-icon { background: transparent; border: none; }
       `}</style>
 
       {/* HEADER STATS */}
@@ -432,7 +436,7 @@ const DashboardPage = ({
             minZoom={7.5}
             maxZoom={18}
             style={{ height: "100%", width: "100%" }}
-            bounds={mapBounds || undefined}
+            bounds={mapBounds || undefined} // Auto-zoom ke area marker
             maxBoundsViscosity={1}
             scrollWheelZoom={true}
           >
@@ -447,11 +451,13 @@ const DashboardPage = ({
             {dynamicGIs.map((gi, idx) => {
               const trafoList = getTrafoListByGI(gi.name);
               const status = getPinStatus(trafoList);
+
               return (
                 <Marker
                   key={idx}
                   position={[gi.lat, gi.lon]}
                   icon={createCustomIcon(status)}
+                  title={`${gi.name} - Status: ${status}`}
                 >
                   <Popup
                     autoPan={true}
@@ -459,8 +465,15 @@ const DashboardPage = ({
                     autoPanPaddingBottomRight={[10, 10]}
                   >
                     <div className="font-sans text-gray-800">
+                      {/* POPUP HEADER */}
                       <div
-                        className={`px-4 py-3 pr-10 text-white flex justify-between items-center ${status.includes("KRITIS") ? "bg-gradient-to-r from-red-600 to-red-500" : status.includes("WASPADA") ? "bg-gradient-to-r from-orange-500 to-amber-500" : "bg-gradient-to-r from-blue-600 to-blue-500"}`}
+                        className={`px-4 py-3 pr-10 text-white flex justify-between items-center ${
+                          status.includes("KRITIS")
+                            ? "bg-gradient-to-r from-red-600 to-red-500"
+                            : status.includes("WASPADA")
+                              ? "bg-gradient-to-r from-orange-500 to-amber-500"
+                              : "bg-gradient-to-r from-blue-600 to-blue-500"
+                        }`}
                       >
                         <div className="flex items-center gap-2">
                           <Server size={16} />
@@ -475,6 +488,8 @@ const DashboardPage = ({
                           {trafoList.length} Unit
                         </span>
                       </div>
+
+                      {/* POPUP BODY (List Trafo) */}
                       <div className="bg-white max-h-[160px] overflow-y-auto custom-popup-scroll">
                         {trafoList.length > 0 ? (
                           trafoList.map((item, i) => (
@@ -500,7 +515,17 @@ const DashboardPage = ({
                                 </p>
                               </div>
                               <span
-                                className={`text-xs px-2 py-1 rounded font-bold ${(item.status_ieee || "").toUpperCase().includes("KRITIS") || (item.status_ieee || "").toUpperCase().includes("COND 3") ? "bg-red-500 text-white" : (item.status_ieee || "").toUpperCase().includes("WASPADA") || (item.status_ieee || "").toUpperCase().includes("COND 2") ? "bg-orange-500 text-white" : "bg-green-500 text-white"}`}
+                                className={`text-xs px-2 py-1 rounded font-bold ${
+                                  (item.status_ieee || "")
+                                    .toUpperCase()
+                                    .includes("KRITIS")
+                                    ? "bg-red-500 text-white"
+                                    : (item.status_ieee || "")
+                                          .toUpperCase()
+                                          .includes("WASPADA")
+                                      ? "bg-orange-500 text-white"
+                                      : "bg-green-500 text-white"
+                                }`}
                               >
                                 {(item.status_ieee || "Normal").split(" ")[0]}
                               </span>
@@ -518,6 +543,8 @@ const DashboardPage = ({
               );
             })}
           </MapContainer>
+
+          {/* LEGENDA MAP */}
           <div
             className={`absolute bottom-4 left-4 z-[1000] p-4 rounded-xl shadow-lg border ${isDarkMode ? "bg-slate-800/95 border-slate-600" : "bg-white/95 border-slate-200"}`}
           >
@@ -547,6 +574,7 @@ const DashboardPage = ({
 
         {/* KOLOM KANAN: SIDE PANEL (PIE CHART) */}
         <div className="flex flex-col gap-6 h-[650px]">
+          {/* Pie Chart Card */}
           <div
             className={`flex-1 rounded-2xl border shadow-sm p-5 relative flex flex-col items-center justify-center ${cardBg}`}
           >
@@ -600,7 +628,7 @@ const DashboardPage = ({
               className={`p-4 border-b shadow-sm bg-[#1B7A8F] text-white ${isDarkMode ? "border-slate-600" : "border-gray-100"}`}
             >
               <h3 className="font-bold text-sm flex items-center gap-2">
-                <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />{" "}
+                <Trophy className="text-[#F1C40F]" size={18} fill="#F1C40F" />
                 Top 5 Highest TDCG
               </h3>
             </div>

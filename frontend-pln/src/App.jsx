@@ -20,7 +20,8 @@ import {
 import { AnimatePresence } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { supabase } from "./lib/supabaseClient";
-import LoginPage from "./components/LoginPage";
+
+// Components Kecil (Keep Direct Import)
 import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
@@ -28,20 +29,22 @@ import VoltyMascot from "./components/VoltyMascot";
 import ThemeToggle from "./components/ThemeToggle";
 import useAutoLogout from "./hooks/useAutoLogout";
 
-// Lazy Load Pages
+// 🔥 OPTIMASI JS: SEMUA HALAMAN UTAMA DI-LAZY LOAD
+// Browser tidak akan download codingan halaman ini sampai user membukanya.
+const LoginPage = lazy(() => import("./components/LoginPage")); // Sekarang Lazy!
+const LandingPage = lazy(() => import("./components/LandingPage"));
+const DashboardPage = lazy(() => import("./components/DashboardPage"));
+const InputFormPage = lazy(() => import("./components/InputFormPage"));
+const TrendingPage = lazy(() => import("./components/TrendingPage"));
+const HistoryPage = lazy(() => import("./components/HistoryPage"));
+const GuidePage = lazy(() => import("./components/GuidePage"));
+const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 const UserManagementPage = lazy(
   () => import("./components/UserManagementPage"),
 );
 const UnitManagementPage = lazy(
   () => import("./components/UnitManagementPage"),
 );
-const DashboardPage = lazy(() => import("./components/DashboardPage"));
-const InputFormPage = lazy(() => import("./components/InputFormPage"));
-const TrendingPage = lazy(() => import("./components/TrendingPage"));
-const HistoryPage = lazy(() => import("./components/HistoryPage"));
-const GuidePage = lazy(() => import("./components/GuidePage"));
-const LandingPage = lazy(() => import("./components/LandingPage"));
-const SuperAdminPage = lazy(() => import("./components/SuperAdminPage"));
 
 const API_URL = "http://127.0.0.1:8000";
 
@@ -73,11 +76,17 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("pln-smart-trafo-activepage", activePage);
   }, [activePage]);
+
   useEffect(() => {
     localStorage.setItem(
       "pln-smart-trafo-darkmode",
       JSON.stringify(isDarkMode),
     );
+    if (isDarkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   }, [isDarkMode]);
 
   const [formData, setFormData] = useState({
@@ -111,7 +120,6 @@ export default function Home() {
     const loadMapping = async () => {
       try {
         const res = await fetch(`${API_URL}/master/hierarchy`);
-        // Jika backend mati, jangan throw error yang memblokir UI
         if (!res.ok) return;
         const data = await res.json();
         if (data && Object.keys(data).length > 0) setUnitGiMapping(data);
@@ -122,10 +130,10 @@ export default function Home() {
     loadMapping();
   }, []);
 
-  // --- FUNGSI CEK PROFILE ---
+  // --- AUTH LOGIC ---
   const fetchUserProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("profiles")
         .select("role, unit_ultg")
         .eq("id", userId)
@@ -144,11 +152,8 @@ export default function Home() {
     }
   };
 
-  // --- 🔥 AUTH LOGIC: ANTI-STUCK VERSION ---
   useEffect(() => {
     let mounted = true;
-
-    // 1. Fungsi Handler Utama untuk Sesi
     const handleSession = async (currentSession) => {
       try {
         if (currentSession) {
@@ -166,22 +171,18 @@ export default function Home() {
       }
     };
 
-    // 2. Cek Sesi Saat Ini (Initial Load/Refresh)
     supabase.auth.getSession().then(({ data: { session } }) => {
       handleSession(session);
     });
 
-    // 3. Listener Perubahan Auth (Login/Logout)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       handleSession(session);
     });
 
-    // 4. 🔥 SAFETY TIMEOUT: Paksa stop loading setelah 5 detik jika macet
     const safetyTimer = setTimeout(() => {
       if (authChecking && mounted) {
-        console.warn("Auth check timed out, forcing render.");
         setAuthChecking(false);
       }
     }, 5000);
@@ -207,7 +208,6 @@ export default function Home() {
       setHistoryData(data || []);
     } catch (error) {
       console.error("History fetch error:", error);
-      // Jangan tampilkan toast error saat refresh pertama kali agar tidak mengganggu
     } finally {
       setLoadingHistory(false);
     }
@@ -235,17 +235,13 @@ export default function Home() {
   const handleLogout = async () => {
     setShowLogoutModal(false);
     setIsLoggingOut(true);
-
-    // Animasi logout sebentar
     await new Promise((resolve) => setTimeout(resolve, 1500));
-
     try {
       await supabase.auth.signOut();
       localStorage.removeItem("pln-smart-trafo-auth");
     } catch (e) {
       console.error("Logout err", e);
     }
-
     setSession(null);
     setUserRole(null);
     setUserUnit(null);
@@ -306,23 +302,19 @@ export default function Home() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
-
     if (!formData.lokasi_gi || !formData.nama_trafo)
       return toast.error("Harap isi Lokasi GI & Nama Trafo!");
 
     if (userRole !== "super_admin" && userUnit) {
       const allowedGIs = unitGiMapping[userUnit] || [];
       const inputGI = (formData.lokasi_gi || "").trim().toLowerCase();
-
       const isAllowed = allowedGIs.some((gi) => {
         const giName = (typeof gi === "string" ? gi : gi.name).toLowerCase();
         return inputGI.includes(giName) || giName.includes(inputGI);
       });
-
       if (!isAllowed && Object.keys(unitGiMapping).length > 0) {
         return toast.error(
           `⛔ Akses Ditolak: GI "${formData.lokasi_gi}" bukan bagian dari ULTG ${userUnit}.`,
-          { duration: 5000 },
         );
       }
     }
@@ -335,7 +327,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       if (!res.ok) throw new Error("Gagal terhubung ke AI Service");
       const resultData = await res.json();
       setResult(resultData);
@@ -357,11 +348,9 @@ export default function Home() {
 
       const { error } = await supabase.from("riwayat_uji").insert([dataToSave]);
       if (error) throw error;
-
       toast.success(`Data berhasil disimpan untuk ${finalOwner}`);
-      if (typeof fetchHistory === "function") await fetchHistory();
+      await fetchHistory();
     } catch (err) {
-      console.error("Error submit:", err);
       toast.error("Gagal menyimpan: " + err.message);
     } finally {
       setLoading(false);
@@ -402,7 +391,7 @@ export default function Home() {
 
   if (!session) {
     return showLogin ? (
-      <>
+      <Suspense fallback={<LoadingScreen />}>
         <Toaster />
         <button
           onClick={() => setShowLogin(false)}
@@ -410,8 +399,9 @@ export default function Home() {
         >
           <ArrowLeft size={16} /> Kembali
         </button>
+        {/* LOGIN PAGE JUGA DI-SUSPENSE AGAR AMAN */}
         <LoginPage onLoginSuccess={() => setShowLogin(false)} />
-      </>
+      </Suspense>
     ) : (
       <Suspense fallback={<LoadingScreen />}>
         <LandingPage
@@ -430,7 +420,7 @@ export default function Home() {
       <Toaster position="top-center" richColors />
       {loading && <LoadingScreen />}
 
-      {/* MODAL LOGOUT & DELETE */}
+      {/* MODALS */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-[99] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div
@@ -520,6 +510,7 @@ export default function Home() {
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${isSidebarOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}
         onClick={() => setIsSidebarOpen(false)}
       />
+
       <aside
         className={`fixed top-0 left-0 bottom-0 z-50 w-72 shadow-2xl transform transition-transform duration-300 flex flex-col ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} ${isDarkMode ? "bg-[#1e293b]" : "bg-white"}`}
       >
@@ -655,6 +646,7 @@ export default function Home() {
             )}
             {activePage === "history" && (
               <PageTransition key="hist">
+                {/* 🔥 PERBAIKAN: Menambahkan unitMapping agar HistoryPage sinkron */}
                 <HistoryPage
                   historyData={historyData}
                   isDarkMode={isDarkMode}
@@ -666,6 +658,7 @@ export default function Home() {
                   onNavigateToGuide={(tab) =>
                     navigateTo("guide", { guideTab: tab })
                   }
+                  unitMapping={unitGiMapping}
                 />
               </PageTransition>
             )}
