@@ -8,12 +8,9 @@ import {
   RefreshCw,
   Globe,
   Database,
-  UploadCloud,
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-// Pastikan file assetData.js ada, atau komentar baris ini jika belum ada
-import { ultgData } from "../data/assetData";
 
 const API_URL = "http://127.0.0.1:8000";
 
@@ -24,7 +21,6 @@ export default function UnitManagementPage({
 }) {
   const [hierarchy, setHierarchy] = useState({});
   const [loading, setLoading] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
 
   // State Form (HANYA untuk GI, karena ULTG dibuat di User Management)
   const [newGi, setNewGi] = useState({ ultg: "", name: "", lat: "", lon: "" });
@@ -46,73 +42,6 @@ export default function UnitManagementPage({
   useEffect(() => {
     fetchHierarchy();
   }, []);
-
-  // --- FITUR IMPORT DATA RIIL ---
-  const handleImportInitialData = async () => {
-    if (
-      !confirm(
-        "Import data riil? \nPastikan database masih bersih untuk hasil terbaik.",
-      )
-    )
-      return;
-
-    setIsImporting(true);
-    const toastId = toast.loading("Mengimport data...");
-
-    try {
-      let successCount = 0;
-      let failCount = 0;
-      const units = Object.values(ultgData);
-
-      for (const unit of units) {
-        const ultgName = unit.name;
-
-        // 1. Buat ULTG (Skip jika ada)
-        try {
-          await fetch(`${API_URL}/admin/master/add-ultg`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              nama_ultg: ultgName,
-              requester_email: session.user.email,
-            }),
-          });
-        } catch (e) {
-          console.log("Skip ULTG exists");
-        }
-
-        // 2. Buat GI
-        for (const gi of unit.gis) {
-          try {
-            const res = await fetch(`${API_URL}/admin/master/add-gi`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                nama_gi: gi.name,
-                nama_ultg: ultgName,
-                lat: gi.lat || 0,
-                lon: gi.lng || 0,
-                requester_email: session.user.email,
-              }),
-            });
-            if (res.ok) successCount++;
-            else failCount++;
-          } catch (e) {
-            failCount++;
-          }
-        }
-      }
-
-      toast.success(`Selesai! ${successCount} GI berhasil ditambahkan.`, {
-        id: toastId,
-      });
-      fetchHierarchy();
-    } catch (err) {
-      toast.error("Gagal import: " + err.message, { id: toastId });
-    } finally {
-      setIsImporting(false);
-    }
-  };
 
   // --- Fungsi Tambah GI (Gardu Induk) ---
   const handleAddGi = async (e) => {
@@ -204,23 +133,12 @@ export default function UnitManagementPage({
           </p>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleImportInitialData}
-            disabled={isImporting}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm ${isDarkMode ? "bg-emerald-900/50 text-emerald-400 border border-emerald-800 hover:bg-emerald-900" : "bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200"}`}
-          >
-            <UploadCloud size={16} />
-            {isImporting ? "Mengimport..." : "Import Data Awal"}
-          </button>
-
-          <button
-            onClick={fetchHierarchy}
-            className="p-2 bg-gray-500/10 rounded-lg hover:bg-gray-500/20"
-          >
-            <RefreshCw size={20} />
-          </button>
-        </div>
+        <button
+          onClick={fetchHierarchy}
+          className="p-2 bg-gray-500/10 rounded-lg hover:bg-gray-500/20"
+        >
+          <RefreshCw size={20} />
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -236,6 +154,12 @@ export default function UnitManagementPage({
             Untuk menambah <b>Unit Layanan Transmisi Gardu (ULTG)</b> baru, silakan gunakan menu{" "}
             <b>Manajemen User</b> agar GI otomatis terhubung dengan
             ULTG-nya.
+          <br /><br />
+           <div className={`leading-relaxed ${isDarkMode ? "bg-red-900/20 border-red-800 text-red-300" : "bg-red-50 border-red-200 text-red-700"} font-bold`}
+           >
+            Untuk menghapus <b>ULTG</b>, silakan gunakan menu{" "}
+            <b>Manajemen User</b>, dan menghapus user dari ULTG terkait
+            </div>
           </div>
 
           <div
@@ -341,13 +265,6 @@ export default function UnitManagementPage({
                 <h4 className="font-bold text-lg text-[#1B7A8F] flex items-center gap-2">
                   <Map size={18} /> {`ULTG ${ultg}`}
                 </h4>
-                <button
-                  onClick={() => handleDeleteUltg(ultg)}
-                  className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition"
-                  title="Hapus Unit"
-                >
-                  <Trash2 size={16} />
-                </button>
               </div>
 
               <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">

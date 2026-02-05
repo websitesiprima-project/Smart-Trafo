@@ -102,6 +102,7 @@ class TrafoInput(BaseModel):
     c2h6: float
     co: float
     co2: float
+    skip_db_save: bool = False  # True untuk InputFormPage (frontend handle save)
 
 class ChatInput(BaseModel):
     message: str
@@ -132,6 +133,205 @@ class CreateUserRequest(BaseModel):
 
 def hitung_tdcg(data: TrafoInput):
     return data.h2 + data.ch4 + data.c2h6 + data.c2h4 + data.c2h2 + data.co
+
+# --- ANALISIS SPLN T5.004-4:2016 (Standar PLN Indonesia) ---
+def analisis_spln(data: TrafoInput, tdcg: float):
+    """
+    Analisis berdasarkan SPLN T5.004-4:2016 
+    Pedoman Pemeliharaan Trafo Tenaga PLN
+    Menggunakan metode TDCG (Total Dissolved Combustible Gas)
+    """
+    # Klasifikasi Kondisi TDCG sesuai SPLN T5.004-4:2016
+    # Kondisi 1: ≤ 720 ppm      -> Operasi Normal
+    # Kondisi 2: 721 - 1920 ppm -> Waspada (Uji Rutin)
+    # Kondisi 3: 1921 - 4630 ppm -> Peringatan (Uji Lanjut)
+    # Kondisi 4: > 4630 ppm     -> Bahaya (Trip)
+    
+    if tdcg <= 720:
+        kondisi = 1
+        status = "Kondisi 1 - Operasi Normal"
+        tindakan = "Operasi normal, lakukan sampling rutin sesuai jadwal"
+    elif tdcg <= 1920:
+        kondisi = 2
+        status = "Kondisi 2 - Waspada"
+        tindakan = "Lakukan uji rutin lebih sering, perhatikan tren kenaikan gas"
+    elif tdcg <= 4630:
+        kondisi = 3
+        status = "Kondisi 3 - Peringatan"
+        tindakan = "Lakukan uji lanjut segera, pertimbangkan pengurangan beban"
+    else:
+        kondisi = 4
+        status = "Kondisi 4 - Bahaya"
+        tindakan = "SEGERA evaluasi untuk trip/isolasi transformator"
+    
+    catatan = f"TDCG = {tdcg} ppm. {tindakan}"
+    
+    return status, catatan
+
+# --- ANALISIS DUVAL PENTAGON 1 (Minyak Mineral) ---
+def analisis_duval_pentagon(data: TrafoInput):
+    """
+    Analisis Duval Pentagon 1 - menggunakan algoritma SAMA dengan frontend.
+    Menghitung koordinat centroid lalu menentukan zona berdasarkan posisi.
+    """
+    import math
+    
+    total = data.h2 + data.c2h6 + data.ch4 + data.c2h4 + data.c2h2
+    if total == 0:
+        return "Tidak Ada Gas Terdeteksi", {"h2": 0, "c2h6": 0, "ch4": 0, "c2h4": 0, "c2h2": 0}
+    
+    # Hitung persentase (sama dengan frontend)
+    pH2 = (data.h2 / total) * 100
+    pC2H6 = (data.c2h6 / total) * 100
+    pCH4 = (data.ch4 / total) * 100
+    pC2H4 = (data.c2h4 / total) * 100
+    pC2H2 = (data.c2h2 / total) * 100
+    
+    def rad(deg):
+        return deg * math.pi / 180
+    
+    # Faktor skala (sama dengan frontend k=0.4)
+    k = 0.4
+    
+    # Hitung titik-titik vektor berbobot (SAMA PERSIS dengan frontend)
+    # H2: 90° (atas/y+), C2H6: 162°, CH4: 234°, C2H4: 306°, C2H2: 18°
+    points = [
+        {"x": 0, "y": pH2 * k},  # H2 (Top)
+        {"x": pC2H6 * k * math.cos(rad(162)), "y": pC2H6 * k * math.sin(rad(162))},  # C2H6
+        {"x": pCH4 * k * math.cos(rad(234)), "y": pCH4 * k * math.sin(rad(234))},    # CH4
+        {"x": pC2H4 * k * math.cos(rad(306)), "y": pC2H4 * k * math.sin(rad(306))},  # C2H4
+        {"x": pC2H2 * k * math.cos(rad(18)), "y": pC2H2 * k * math.sin(rad(18))},    # C2H2
+    ]
+    
+    # Hitung Centroid (sama dengan frontend - simple sum)
+    Cx = sum(p["x"] for p in points)
+    Cy = sum(p["y"] for p in points)
+    
+    # === DETEKSI ZONA MENGGUNAKAN SIGNED AREA (Cross Product) ===
+    # Fungsi untuk cek apakah titik di sebelah kiri garis (A→B)
+    def is_left_of_line(px, py, ax, ay, bx, by):
+        """Return True jika point (px,py) di sebelah kiri garis dari A ke B"""
+        return (bx - ax) * (py - ay) - (by - ay) * (px - ax) > 0
+    
+    # Fungsi untuk cek apakah titik di sebelah kanan garis (A→B)  
+    def is_right_of_line(px, py, ax, ay, bx, by):
+        return (bx - ax) * (py - ay) - (by - ay) * (px - ax) < 0
+    
+    # Boundary lines dari SVG zones:
+    # D1-D2 boundary: (4, 16) ke (32, -6.1) - D1 di atas/kiri, D2 di bawah/kanan
+    # D2-T3 boundary: (24.3, -30) ke (0, -3) - D2 di atas, T3 di bawah
+    # T3-T2 boundary: sekitar y = -32.4 horizontal
+    # T1-T2 boundary: (-6, -4) ke (1, -32.4)
+    # T1-S boundary: (-35, 3.1) ke (-6, -4)
+    # S-PD boundary: sekitar x = 0, y > 24.5
+    # D1-PD boundary: sekitar y > 24.5 dan x > 0
+    
+    zona_names = {
+        "PD": "PD: Partial Discharge",
+        "D1": "D1: Low Energy Discharge (Sparking)",
+        "D2": "D2: High Energy Discharge (Arcing)",
+        "T3": "T3: Thermal Fault > 700°C",
+        "T2": "T2: Thermal Fault 300-700°C",
+        "T1": "T1: Thermal Fault < 300°C",
+        "S": "S: Stray Gassing (Normal)"
+    }
+    
+    detected_zone = None
+    
+    # === KLASIFIKASI BERDASARKAN POSISI CENTROID ===
+    
+    # 1. CEK ZONA PD - sangat sempit di atas tengah (H2 dominan ekstrem)
+    if Cx >= -1 and Cx <= 0 and Cy >= 24.5 and Cy <= 40:
+        detected_zone = "PD"
+    
+    # 2. CEK ZONA D1 - kanan atas (antara H2 dan C2H2)
+    # D1 boundaries: di atas garis D1-D2, di kanan sumbu Y, di bawah garis top
+    elif Cx > 0 and Cy > 0:
+        # Cek apakah di atas garis D1-D2: dari (0, 1.5) ke (32, -6.1)
+        # Jika di atas garis ini dan Cx > 0, Cy > 0 → D1
+        if is_left_of_line(Cx, Cy, 0, 1.5, 32, -6.1):
+            detected_zone = "D1"
+        else:
+            detected_zone = "D2"
+    
+    # 3. CEK ZONA D2 - kanan bawah (tinggi C2H2 dan C2H4)
+    elif Cx > 0 and Cy <= 0:
+        # D2 di atas garis D2-T3: dari (0, -3) ke (24.3, -30)
+        if is_left_of_line(Cx, Cy, 0, -3, 24.3, -30):
+            detected_zone = "D2"
+        else:
+            detected_zone = "T3"
+    
+    # 4. CEK ZONA T3 - bawah kanan (tinggi C2H4)
+    elif Cx >= 0 and Cy < -3:
+        if Cy > -32.4:
+            detected_zone = "T3"
+        else:
+            detected_zone = "T3"  # masih T3 di ujung bawah
+    
+    # 5. CEK ZONA T2 - bawah tengah-kiri
+    elif Cx < 0 and Cy < -4:
+        # Batas T2-T1: garis dari (-6, -4) ke (-22.5, -32.4)
+        if is_right_of_line(Cx, Cy, -6, -4, -22.5, -32.4):
+            # Di kanan garis → T2 atau T3
+            if Cx > 0:
+                detected_zone = "T3"
+            else:
+                detected_zone = "T2"
+        else:
+            detected_zone = "T1"
+    
+    # 6. CEK ZONA T1 - kiri bawah (tinggi CH4)
+    elif Cx < 0 and Cy >= -4 and Cy < 1.5:
+        # Batas T1-S: garis dari (-35, 3.1) ke (0, 1.5)
+        if is_right_of_line(Cx, Cy, -35, 3.1, 0, 1.5):
+            detected_zone = "T1"
+        else:
+            detected_zone = "S"
+    
+    # 7. CEK ZONA S - kiri atas (tinggi C2H6 - stray gassing)
+    elif Cx < 0 and Cy >= 1.5:
+        detected_zone = "S"
+    
+    # 8. DEFAULT - titik di tengah atau tidak terklasifikasi
+    else:
+        # Gunakan persentase gas untuk menentukan
+        max_gas = max(pH2, pC2H6, pCH4, pC2H4, pC2H2)
+        if max_gas == pH2:
+            if pH2 > 80:
+                detected_zone = "PD"
+            else:
+                detected_zone = "D1" if pC2H2 > pCH4 else "S"
+        elif max_gas == pC2H2:
+            detected_zone = "D1" if pC2H4 < 25 else "D2"
+        elif max_gas == pC2H4:
+            if pC2H2 > 10:
+                detected_zone = "D2"
+            elif pC2H4 > 50:
+                detected_zone = "T3"
+            else:
+                detected_zone = "T2"
+        elif max_gas == pCH4:
+            detected_zone = "T1"
+        elif max_gas == pC2H6:
+            detected_zone = "S"
+        else:
+            detected_zone = "S"  # default normal
+    
+    diagnosa = zona_names.get(detected_zone, "Indeterminate")
+    
+    pct = {
+        "h2": round(pH2, 1),
+        "c2h6": round(pC2H6, 1),
+        "ch4": round(pCH4, 1),
+        "c2h4": round(pC2H4, 1),
+        "c2h2": round(pC2H2, 1),
+        "centroid_x": round(Cx, 2),
+        "centroid_y": round(Cy, 2),
+        "zona": detected_zone
+    }
+    
+    return diagnosa, pct
 
 def analisis_ratio_co2_co(data: TrafoInput):
     if data.co == 0: return "Tidak Dapat Dihitung (CO=0)", 0
@@ -357,6 +557,9 @@ def predict(data: TrafoInput):
     # A. Jalankan Perhitungan Fisika/Kimia
     tdcg = hitung_tdcg(data)
     ieee_status, ieee_note = analisis_ieee_2019(data)
+    spln_status, spln_note = analisis_spln(data, tdcg)
+    pentagon_res, pentagon_pct = analisis_duval_pentagon(data)
+    # Legacy methods (tetap dihitung untuk backward compatibility)
     rogers_res, val_r1, val_r2, val_r5 = analisis_rogers_ratio(data)
     key_gas_res = analisis_key_gas(data)
     duval_res, pct_ch4, pct_c2h4, pct_c2h2 = analisis_duval_triangle_1(data)
@@ -375,82 +578,124 @@ def predict(data: TrafoInput):
     # C. Analisis AI (LLM - Groq)
     volty_chat = "AI sedang menganalisis..."
     if groq_client:
-        system_prompt = """
-Anda adalah VOLTY, Spesialis Senior Analisis DGA Transformator untuk PLN UPT Manado.
-=== ATURAN ANALISIS WAJIB ===
-1. Gunakan standar IEEE C57.104-2019 sebagai acuan utama
-2. JANGAN membuat klaim berlebihan yang tidak didukung data
-3. Perhatikan nilai ABSOLUT gas (ppm), bukan hanya persentase Duval
-4. Analisis harus PROPORSIONAL dengan nilai gas yang sebenarnya
-=== FORMAT JAWABAN ===
-Bahasa Indonesia, Markdown singkat:
-### Diagnosa Singkat
-### Hasil Teknis
-### Rekomendasi Aksi
+        system_prompt = """Anda adalah VOLTY, Spesialis Senior Analisis DGA (Dissolved Gas Analysis) Transformator untuk PLN UPT Manado.
+
+TUGAS: Menyusun laporan kesimpulan analisis DGA transformator berdasarkan hasil analisis yang sudah dihitung.
+
+STANDAR ACUAN (3 metode yang digunakan):
+1. IEEE C57.104-2019 - Standar internasional untuk interpretasi DGA
+2. SPLN T5.004-4:2016 - Standar PLN Indonesia berdasarkan nilai TDCG
+3. Duval Pentagon 1 - Metode lokalisasi jenis fault
+
+ATURAN PENTING:
+- GUNAKAN hasil analisis yang sudah diberikan, JANGAN menganalisis ulang
+- Untuk Duval Pentagon, SEBUTKAN PERSIS diagnosa zona yang diberikan (PD/D1/D2/T1/T2/T3/S)
+- Jelaskan arti dari setiap hasil dengan bahasa profesional
+- Berikan rekomendasi yang sesuai dengan kondisi
+
+FORMAT OUTPUT (Markdown, TANPA emoji):
+
+### DIAGNOSA KONDISI
+[Status: Normal / Perlu Perhatian / Perlu Tindakan / Kritis]
+[Rangkuman kondisi transformator berdasarkan 3 metode]
+
+### HASIL ANALISIS TEKNIS
+**1. IEEE C57.104-2019:** [sebutkan status yang diberikan dan penjelasannya]
+**2. SPLN T5.004-4:2016:** [sebutkan status kondisi yang diberikan dan penjelasannya]  
+**3. Duval Pentagon:** [SEBUTKAN ZONA PERSIS seperti yang diberikan, jelaskan artinya]
+
+### REKOMENDASI
+[Tindakan pemeliharaan/monitoring yang perlu dilakukan]
 """
         
-        h2_level = "rendah" if data.h2 < 100 else "meningkat" if data.h2 < 200 else "tinggi"
-        ch4_level = "rendah" if data.ch4 < 120 else "meningkat" if data.ch4 < 400 else "tinggi"
-        c2h2_level = "sangat rendah" if data.c2h2 < 2 else "rendah" if data.c2h2 < 5 else "sedang" if data.c2h2 < 10 else "tinggi"
-        c2h4_level = "rendah" if data.c2h4 < 50 else "sedang" if data.c2h4 < 100 else "tinggi"
-        co_level = "normal" if data.co < 350 else "meningkat" if data.co < 570 else "tinggi"
+        # Build pentagon context dengan zona yang terdeteksi
+        pentagon_zona = pentagon_pct.get('zona', '-')
+        pentagon_gases = f"H2:{pentagon_pct.get('h2',0)}%, C2H6:{pentagon_pct.get('c2h6',0)}%, CH4:{pentagon_pct.get('ch4',0)}%, C2H4:{pentagon_pct.get('c2h4',0)}%, C2H2:{pentagon_pct.get('c2h2',0)}%"
         
-        total_duval = data.ch4 + data.c2h4 + data.c2h2
-        duval_context = ""
-        if total_duval > 0:
-            pct_ch4_ai = round((data.ch4 / total_duval) * 100, 1)
-            pct_c2h4_ai = round((data.c2h4 / total_duval) * 100, 1)
-            pct_c2h2_ai = round((data.c2h2 / total_duval) * 100, 1)
-            duval_context = f"""
-ANALISIS DUVAL:
-- CH4: {pct_ch4_ai}% | C2H4: {pct_c2h4_ai}% | C2H2: {pct_c2h2_ai}%
-- PERHATIAN: C2H4 absolut = {data.c2h4} ppm {'(RENDAH untuk T3!)' if data.c2h4 <= 100 else '(cukup tinggi)'}
-- {'JANGAN sebut T3 karena C2H4 absolut < 100 ppm' if data.c2h4 <= 100 else ''}"""
-        
-        user_prompt = f"""
-DATA DGA TRANSFORMATOR:
-| Gas | Nilai (ppm) | Level |
-|-----|-------------|-------|
-| H2 | {data.h2} | {h2_level} |
-| CH4 | {data.ch4} | {ch4_level} |
-| C2H2 | {data.c2h2} | {c2h2_level} |
-| C2H4 | {data.c2h4} | {c2h4_level} |
-| C2H6 | {data.c2h6} | - |
-| CO | {data.co} | {co_level} |
-| CO2 | {data.co2} | - |
-| TDCG | {tdcg} | {'Normal' if tdcg < 720 else 'Waspada' if tdcg < 1920 else 'Kritis'} |
-{duval_context}
+        user_prompt = f"""DATA UJI DGA TRANSFORMATOR:
 
-HASIL METODE ANALISIS:
-- IEEE C57.104-2019: {ieee_status}
-- Duval Triangle: {duval_res}
-- Rogers Ratio: {rogers_res}
+| Gas | Nilai (ppm) |
+|-----|-------------|
+| H2 (Hidrogen) | {data.h2} |
+| CH4 (Metana) | {data.ch4} |
+| C2H6 (Etana) | {data.c2h6} |
+| C2H4 (Etilena) | {data.c2h4} |
+| C2H2 (Asetilena) | {data.c2h2} |
+| CO (Karbon Monoksida) | {data.co} |
+| CO2 (Karbon Dioksida) | {data.co2} |
+| TDCG | {tdcg} ppm |
 
-PERINGATAN:
-- {'Gas-gas umumnya RENDAH, jangan sebut "relatif tinggi"' if data.h2 < 100 and data.ch4 < 120 else ''}
-- {'C2H2 sangat rendah = TIDAK ADA indikasi arcing aktif' if data.c2h2 < 5 else ''}
-- {'CO meningkat = degradasi isolasi kertas (penuaan), BUKAN thermal fault berat' if data.co > 300 else ''}
+=== HASIL ANALISIS (SUDAH DIHITUNG) ===
 
-Berikan analisis yang AKURAT dan PROPORSIONAL.
-"""
+1. IEEE C57.104-2019:
+   - Status: {ieee_status}
+   - Keterangan: {ieee_note}
+
+2. SPLN T5.004-4:2016:
+   - Status: {spln_status}
+   - Keterangan: {spln_note}
+
+3. Duval Pentagon 1:
+   - Zona Terdeteksi: {pentagon_zona}
+   - Diagnosa: {pentagon_res}
+   - Distribusi Gas: {pentagon_gases}
+
+INSTRUKSI: Susun laporan kesimpulan yang merangkum ketiga hasil analisis di atas. Untuk Duval Pentagon, WAJIB sebutkan zona "{pentagon_zona}" sesuai hasil yang diberikan."""
         try:
             chat = groq_client.chat.completions.create(
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                 model="llama-3.3-70b-versatile",
-                max_tokens=600,
-                temperature=0.2
+                max_tokens=800,
+                temperature=0.3
             )
             volty_chat = chat.choices[0].message.content
         except Exception as e:
             volty_chat = f"Gagal memuat analisis AI: {str(e)}"
+
+    # D. Simpan ke Database (Riwayat Uji) - hanya jika tidak di-skip (Excel Import)
+    if db_active and supabase and not data.skip_db_save:
+        try:
+            riwayat_record = {
+                "no_dokumen": data.no_dokumen,
+                "merk_trafo": data.merk_trafo,
+                "serial_number": data.serial_number,
+                "level_tegangan": data.level_tegangan,
+                "mva": data.mva,
+                "tahun_pembuatan": data.tahun_pembuatan,
+                "lokasi_gi": data.lokasi_gi,
+                "nama_trafo": data.nama_trafo,
+                "tanggal_sampling": data.tanggal_sampling,
+                "suhu_sampel": data.suhu_sampel,
+                "diambil_oleh": data.diambil_oleh,
+                "h2": data.h2,
+                "ch4": data.ch4,
+                "c2h2": data.c2h2,
+                "c2h4": data.c2h4,
+                "c2h6": data.c2h6,
+                "co": data.co,
+                "co2": data.co2,
+                "tdcg": tdcg,
+                "status_ieee": ieee_status,
+                "hasil_ai": volty_chat
+            }
+            
+            supabase.table("riwayat_uji").insert(riwayat_record).execute()
+        except Exception as e:
+            print(f"Error saving to riwayat_uji: {e}")
+            # Continue execution even if save fails
 
     # E. Return Response ke Frontend
     return {
         "status": "Sukses",
         "tdcg_value": tdcg,
         "ieee_status": ieee_status,
+        "ieee_note": ieee_note,
+        "spln_status": spln_status,
+        "spln_note": spln_note,
         "rogers_diagnosis": rogers_res,
         "rogers_data": {"r1": val_r1, "r2": val_r2, "r5": val_r5},
+        "pentagon_diagnosis": pentagon_res,
+        "pentagon_data": pentagon_pct,
         "duval_diagnosis": duval_res,
         "duval_data": {"ch4": pct_ch4, "c2h4": pct_c2h4, "c2h2": pct_c2h2},
         "paper_health": {"status": paper_status, "ratio": paper_ratio},

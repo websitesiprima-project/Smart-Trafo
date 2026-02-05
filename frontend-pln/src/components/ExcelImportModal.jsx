@@ -18,52 +18,6 @@ import { supabase } from "../lib/supabaseClient";
 
 const API_URL = "http://127.0.0.1:8000";
 
-// Mapping ULTG ke GI
-const ULTG_MAPPING = {
-  Lopana: [
-    "GI AMURANG",
-    "GI LOPANA",
-    "GI KAWANGKOAN",
-    "PLTP LAHENDONG 12",
-    "PLTP LAHENDONG 34",
-    "GI TOMOHON",
-    "GI TASIKRIA",
-    "GI TONSEALAMA",
-    "GI SAWANGAN",
-  ],
-  Sawangan: [
-    "GI TELING",
-    "GIS TELING",
-    "GIS SARIO",
-    "GI KEMA",
-    "GI TANJUNG MERAH",
-    "GI BITUNG",
-    "GI RANOMUUT",
-    "GI PANIKI",
-    "GI PANDU",
-    "GI LIKUPANG",
-    "GI LIKUPANG NEW",
-    "GI MSM",
-  ],
-  Kotamobagu: [
-    "PLTU SULUT 1",
-    "GI LOLAK",
-    "GI MOLIBAGU",
-    "GI OTAM",
-    "GI TUTUYAN",
-  ],
-  Gorontalo: [
-    "GI MARISA",
-    "GI TILAMUTA",
-    "GI TOLINGGULA",
-    "GI ANGGREK",
-    "GI ISIMU",
-    "GI GORONTALO BARU",
-    "GI BOTUPINGGE",
-    "GI BOROKO",
-  ],
-};
-
 // Mapping kolom Excel ke field API
 const COLUMN_MAPPING = {
   "Gardu Induk": "lokasi_gi",
@@ -186,24 +140,32 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
   const [results, setResults] = useState({ success: 0, failed: 0, errors: [] });
   const [stage, setStage] = useState("upload"); // upload, preview, processing, done
   const [dragOver, setDragOver] = useState(false);
+  const [inputKey, setInputKey] = useState(Date.now()); // Key untuk reset input file
   
   // State for database assets validation
   const [masterAssets, setMasterAssets] = useState([]);
+  const [ultgHierarchy, setUltgHierarchy] = useState({});
   const [validationErrors, setValidationErrors] = useState([]);
   const [showValidationModal, setShowValidationModal] = useState(false);
 
-  // Fetch master assets on mount
+  // Fetch master assets and ULTG hierarchy on mount
   useEffect(() => {
-    const fetchAssets = async () => {
+    const fetchData = async () => {
       try {
+        // Fetch assets trafo
         const { data, error } = await supabase.from("assets_trafo").select("*");
         if (error) throw error;
         if (data) setMasterAssets(data);
+
+        // Fetch ULTG hierarchy dynamically
+        const hierarchyRes = await fetch(`${API_URL}/master/hierarchy`);
+        const hierarchyData = await hierarchyRes.json();
+        if (hierarchyData) setUltgHierarchy(hierarchyData);
       } catch (err) {
-        console.error("Error fetching assets:", err);
+        console.error("Error fetching data:", err);
       }
     };
-    fetchAssets();
+    fetchData();
   }, []);
 
   const theme = {
@@ -279,6 +241,7 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
 
     if (!validTypes.includes(selectedFile.type) && !selectedFile.name.endsWith(".xlsx") && !selectedFile.name.endsWith(".xls")) {
       setErrors(["File harus berformat Excel (.xlsx atau .xls)"]);
+      setInputKey(Date.now()); // Reset input file
       return;
     }
 
@@ -299,6 +262,7 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
 
         if (jsonData.length === 0) {
           setErrors(["File Excel kosong atau tidak memiliki data."]);
+          setInputKey(Date.now()); // Reset input file
           return;
         }
 
@@ -310,6 +274,7 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
 
         if (missingColumns.length > 0) {
           setErrors([`Kolom tidak ditemukan: ${missingColumns.join(", ")}`]);
+          setInputKey(Date.now()); // Reset input file
           return;
         }
 
@@ -443,7 +408,8 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
         
         // 🔥 VALIDASI ULTG: Cek apakah user berhak mengisi GI tersebut
         if (userRole !== "super_admin" && userUnit) {
-          const allowedGIs = ULTG_MAPPING[userUnit] || [];
+          // Ambil daftar GI dari hierarchy dinamis berdasarkan ULTG user
+          const allowedGIs = (ultgHierarchy[userUnit] || []).map(gi => gi.name);
           const ultgErrors = [];
 
           validData.forEach((row, idx) => {
@@ -477,6 +443,7 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
         if (valErrors.length > 0) {
           setValidationErrors(valErrors);
           setShowValidationModal(true);
+          setInputKey(Date.now()); // Reset input file
           return;
         }
 
@@ -485,10 +452,11 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
       } catch (err) {
         console.error("Parse error:", err);
         setErrors(["Gagal membaca file Excel. Pastikan format file benar."]);
+        setInputKey(Date.now()); // Reset input file
       }
     };
     reader.readAsArrayBuffer(selectedFile);
-  }, [masterAssets]);
+  }, [masterAssets, ultgHierarchy, userRole, userUnit]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -626,6 +594,7 @@ const ExcelImportModal = ({ onClose, onSuccess, isDarkMode, userRole, userUnit }
                 <label className="inline-block px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium cursor-pointer transition">
                   Pilih File
                   <input
+                    key={inputKey}
                     type="file"
                     accept=".xlsx,.xls"
                     onChange={(e) => handleFileSelect(e.target.files[0])}

@@ -239,6 +239,7 @@ export default function Home() {
     try {
       await supabase.auth.signOut();
       localStorage.removeItem("pln-smart-trafo-auth");
+      localStorage.removeItem("volty_chat_history");
     } catch (e) {
       console.error("Logout err", e);
     }
@@ -321,7 +322,7 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const payload = { ...formData };
+      const payload = { ...formData, skip_db_save: true };
       const res = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

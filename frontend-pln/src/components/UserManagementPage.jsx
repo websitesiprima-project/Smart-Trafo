@@ -14,6 +14,7 @@ import {
   EyeOff,
   AlertTriangle,
   XCircle,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabaseClient";
@@ -346,7 +347,7 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                         placeholder="manager@pln.co.id"
                       />
                     </div>
-                    <p className="text-[10px] opacity-50 mt-1">
+                    <p className="text-[13px] font-bold opacity-50 mt-1">
                       ⚠️ Hanya email dengan domain <b>@pln.co.id</b> yang diterima
                     </p>
                   </div>
@@ -380,7 +381,7 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p className="text-[10px] opacity-50 mt-1">Minimal 6 karakter</p>
+                    <p className="text-[13px] font-bold opacity-50 mt-1">Minimal 6 karakter</p>
                   </div>
 
                   <div>
@@ -413,7 +414,7 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                       </button>
                     </div>
                     {formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                      <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                      <p className="text-[13px] font-bold text-red-500 mt-1 flex items-center gap-1">
                         <span>⚠</span> Password tidak cocok
                       </p>
                     )}
@@ -566,15 +567,33 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
               {/* Confirmation Input */}
               <div>
                 <label className="block text-xs font-bold uppercase opacity-70 mb-2">
-                  Ketik "<span className="text-red-500">HAPUS</span>" untuk konfirmasi
+                  Ketik "<span className="text-red-500">HAPUS {userToDelete.unit_ultg}</span>" untuk konfirmasi (huruf besar semua)
                 </label>
                 <input
                   type="text"
                   value={deleteConfirmText}
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="Ketik HAPUS"
-                  className={`w-full p-3 rounded-lg border outline-none focus:ring-2 focus:ring-red-500 font-mono uppercase tracking-widest text-center ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                  placeholder={`HAPUS ${userToDelete.unit_ultg.toUpperCase()}`}
+                  className={`w-full p-3 rounded-lg border-2 outline-none transition text-center font-semibold text-lg tracking-wide ${
+                      deleteConfirmText === `HAPUS ${userToDelete.unit_ultg.toUpperCase()}` 
+                        ? "border-green-500 focus:ring-2 focus:ring-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-500"
+                      : deleteConfirmText.length > 0
+                      ? "border-red-500 focus:ring-2 focus:ring-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
+                      : `focus:ring-2 focus:ring-blue-500 ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-300"}`
+                  }`}
+                  style={{ textTransform: "none" }}
                 />
+                {deleteConfirmText.length > 0 && (
+                  <p className={`text-xs mt-2 font-medium ${
+                    deleteConfirmText === `HAPUS ${userToDelete.unit_ultg.toUpperCase()}`
+                      ? "text-green-900 dark:text-green-500"
+                      : "text-red-600 dark:text-red-400"
+                  }`}>
+                    {deleteConfirmText === `HAPUS ${userToDelete.unit_ultg.toUpperCase()}`
+                      ? "✓ Teks valid, tombol hapus aktif"
+                      : "✗ Teks tidak sesuai, pastikan huruf besar semua"}
+                  </p>
+                )}
               </div>
 
               {/* Action Buttons */}
@@ -590,9 +609,9 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                 <button
                   type="button"
                   onClick={handleDeleteUser}
-                  disabled={deleteConfirmText !== "HAPUS" || isDeleting}
+                  disabled={deleteConfirmText !== `HAPUS ${userToDelete.unit_ultg.toUpperCase()}` || isDeleting}
                   className={`flex-1 py-3 rounded-xl font-bold text-white transition flex justify-center items-center gap-2 ${
-                    deleteConfirmText === "HAPUS" && !isDeleting
+                    deleteConfirmText === `HAPUS ${userToDelete.unit_ultg.toUpperCase()}` && !isDeleting
                       ? "bg-gradient-to-r from-red-600 to-red-700 hover:shadow-lg hover:shadow-red-500/30"
                       : "bg-gray-400 cursor-not-allowed"
                   }`}
