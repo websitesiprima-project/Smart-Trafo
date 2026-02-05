@@ -233,9 +233,9 @@ export default function UnitManagementPage({
             <div className="flex items-center gap-2 font-bold mb-2">
               <AlertTriangle size={16} /> Info Penting
             </div>
-            Untuk menambah <b>Unit Layanan (ULTG)</b> baru, silakan gunakan menu{" "}
-            <b>Manajemen User</b> agar unit otomatis terhubung dengan
-            Manager-nya.
+            Untuk menambah <b>Unit Layanan Transmisi Gardu (ULTG)</b> baru, silakan gunakan menu{" "}
+            <b>Manajemen User</b> agar GI otomatis terhubung dengan
+            ULTG-nya.
           </div>
 
           <div
@@ -257,7 +257,7 @@ export default function UnitManagementPage({
                   <option value="">-- Pilih ULTG --</option>
                   {Object.keys(hierarchy).map((ultg) => (
                     <option key={ultg} value={ultg}>
-                      {ultg}
+                      {`ULTG ${ultg}`}
                     </option>
                   ))}
                 </select>
@@ -270,7 +270,7 @@ export default function UnitManagementPage({
                 <input
                   value={newGi.name}
                   onChange={(e) => setNewGi({ ...newGi, name: e.target.value })}
-                  placeholder="Contoh: GI Teling"
+                  placeholder="Contoh: GI Teling/GIS Teling"
                   className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-gray-50"}`}
                 />
               </div>
@@ -339,7 +339,7 @@ export default function UnitManagementPage({
             >
               <div className="p-4 bg-[#1B7A8F]/10 flex justify-between items-center border-b border-gray-500/10">
                 <h4 className="font-bold text-lg text-[#1B7A8F] flex items-center gap-2">
-                  <Map size={18} /> {ultg}
+                  <Map size={18} /> {`ULTG ${ultg}`}
                 </h4>
                 <button
                   onClick={() => handleDeleteUltg(ultg)}

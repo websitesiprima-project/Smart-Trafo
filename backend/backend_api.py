@@ -631,7 +631,7 @@ def admin_create_user(data: CreateUserRequest):
         return {"status": "Error", "msg": f"Gagal membuat user: {str(e)}"}
 
 @app.delete("/admin/delete-user/{target_id}")
-def admin_delete_user(target_id: str, requester_email: str):
+def admin_delete_user(target_id: str, requester_email: str, unit_ultg: str = ""):
     # 1. Pastikan Client Admin Tersedia
     admin_client = supabase_admin
     if admin_client is None: 
@@ -659,23 +659,42 @@ def admin_delete_user(target_id: str, requester_email: str):
         if requester_profile.get("role") != 'super_admin':
             return {"status": "Gagal", "msg": "Unauthorized: Bukan Super Admin"}
 
-        # 3. Hapus dari Auth
+        # 3. Hapus ULTG terkait (akan cascade delete semua GI)
+        ultg_deleted = False
+        if unit_ultg and unit_ultg.strip() and unit_ultg != "Kantor Induk":
+            try:
+                # Hapus master_ultg (GI akan ikut terhapus karena foreign key cascade)
+                admin_client.table("master_ultg").delete().eq("nama_ultg", unit_ultg).execute()
+                ultg_deleted = True
+                print(f"✅ ULTG '{unit_ultg}' dan semua GI-nya berhasil dihapus")
+            except Exception as ultg_err:
+                print(f"⚠️ Gagal hapus ULTG: {ultg_err}")
+
+        # 4. Hapus dari Auth
         admin_client.auth.admin.delete_user(target_id)
         
-        # 4. Hapus Profile Manual (Safe Execute)
+        # 5. Hapus Profile Manual (Safe Execute)
         try:
             admin_client.table("profiles").delete().eq("id", target_id).execute()
         except:
             pass # Ignore jika sudah terhapus cascade
         
-        # 5. Audit Log
+        # 6. Audit Log
+        details = f"Menghapus User ID: {target_id}"
+        if ultg_deleted:
+            details += f" beserta ULTG '{unit_ultg}' dan seluruh GI-nya"
+        
         admin_client.table("audit_logs").insert({
             "user_email": requester_email,
             "action": "DELETE_USER",
-            "details": f"Menghapus User ID: {target_id}"
+            "details": details
         }).execute()
 
-        return {"status": "Sukses", "msg": "User berhasil dihapus permanent."}
+        msg = "User berhasil dihapus permanent."
+        if ultg_deleted:
+            msg = f"User beserta ULTG '{unit_ultg}' dan seluruh GI-nya berhasil dihapus."
+        
+        return {"status": "Sukses", "msg": msg}
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
     

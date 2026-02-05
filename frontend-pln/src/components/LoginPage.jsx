@@ -216,14 +216,11 @@ const LoginPage = ({ onLoginSuccess }) => {
             <div className="pt-6 text-center">
               <p className="text-slate-500 text-sm">
                 Lupa password atau kendala akses?{" "}
-                <button
-                  onClick={() =>
-                    toast.info("Silakan hubungi Admin ULTG di Extension 123")
-                  }
-                  className="text-[#1B7A8F] font-bold hover:text-[#FFD700] transition-colors hover:underline"
+                <p
+                  className="text-[#1B7A8F] font-bold hover:text-[#FFD700] transition-colors"
                 >
-                  Hubungi IT Support
-                </button>
+                  Hubungi SuperAdmin (UPT MANADO)
+                </p>
               </p>
             </div>
           </div>

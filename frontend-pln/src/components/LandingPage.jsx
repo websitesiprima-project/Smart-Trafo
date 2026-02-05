@@ -346,6 +346,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
             </p>
 
             <button
+            onClick={onStart}
               className={`px-8 py-3 rounded text-white font-bold shadow-lg transition-transform hover:-translate-y-1 ${btnGreen}`}
             >
               Pelajari Selengkapnya

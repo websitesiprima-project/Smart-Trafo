@@ -176,6 +176,45 @@ const HistoryPage = ({
     }
   };
 
+  // --- HITUNG TOTAL DATA BERDASARKAN ULTG ---
+  const totalDataForUnit = useMemo(() => {
+    if (isSuperAdmin) {
+      return historyData.length;
+    }
+
+    if (!userUnit) {
+      return historyData.length;
+    }
+
+    // Cari GI yang sesuai dengan unit user (Fuzzy Match)
+    const targetUnit = (userUnit || "")
+      .toLowerCase()
+      .replace(/ultg/g, "")
+      .trim();
+    const foundKey = Object.keys(unitMapping).find((key) => {
+      const cleanKey = key.toLowerCase().replace(/ultg/g, "").trim();
+      return cleanKey.includes(targetUnit) || targetUnit.includes(cleanKey);
+    });
+
+    const allowedGIs =
+      foundKey && Array.isArray(unitMapping[foundKey])
+        ? unitMapping[foundKey].map((g) =>
+            typeof g === "string" ? g : g.name,
+          )
+        : [];
+
+    const unitData = historyData.filter((item) => {
+      const itemGI = (item.lokasi_gi || "").trim();
+      return allowedGIs.some(
+        (allowed) =>
+          itemGI.toLowerCase().includes(allowed.toLowerCase()) ||
+          allowed.toLowerCase().includes(itemGI.toLowerCase()),
+      );
+    });
+
+    return unitData.length;
+  }, [historyData, userUnit, unitMapping, isSuperAdmin]);
+
   // --- FILTER LOGIC (MENGGUNAKAN MAPPING DINAMIS) ---
   const filteredData = useMemo(() => {
     let baseData = historyData;
@@ -432,7 +471,7 @@ const HistoryPage = ({
             <p
               className={`text-sm mt-1 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}
             >
-              Total: {filteredData.length} / {historyData.length} Data
+              Total: {filteredData.length} / {totalDataForUnit} Data
             </p>
           </div>
         </div>

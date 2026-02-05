@@ -385,7 +385,7 @@ const DashboardPage = ({
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Total Aset
+                Total Aset Trafo
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
                 {totalDbAssets}
@@ -400,7 +400,7 @@ const DashboardPage = ({
             </div>
             <div>
               <p className={`text-[10px] font-bold uppercase ${textSub}`}>
-                Kritis
+                Aset Trafo Kritis
               </p>
               <p className={`text-3xl font-black ${textMain}`}>
                 {globalStats.pieData[2].value}
