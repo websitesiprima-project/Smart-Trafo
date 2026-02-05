@@ -19,19 +19,19 @@ const LOGO_SUPABASE = "/assets/supabase.png";
 const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
   const primaryColor = "text-[#1B7A8F]";
   const bgPrimary = "bg-[#1B7A8F]";
-  const btnGreen = "bg-[#4CAF50] hover:bg-[#43a047]";
+  const btnGreen = "bg-[#1B7A8F] hover:bg-[#16697a]";
 
   return (
     <div
       className={`min-h-screen font-sans transition-colors duration-500 ${isDarkMode ? "bg-[#0f172a] text-white" : "bg-white text-slate-800"}`}
     >
       {/* NAVBAR */}
-      <nav className="container mx-auto px-6 py-5 flex justify-between items-center relative z-20">
+      <nav className="container mx-auto px-6 py-5 flex justify-between items-center relative z-20 sticky top-0 bg-opacity-90 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <img
             src="https://upload.wikimedia.org/wikipedia/commons/2/20/Logo_PLN.svg"
             alt="Logo PLN"
-            className="w-8 h-10 object-contain"
+            className="w-20 h-10 object-contain"
             width="32"
             height="40"
           />
@@ -70,7 +70,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
         <button
           onClick={onStart}
           aria-label="Login ke Dashboard"
-          className={`px-6 py-2.5 rounded shadow-lg hover:-translate-y-0.5 transition-all text-white font-bold text-sm ${btnGreen}`}
+          className={`px-6 py-2.5 rounded shadow-lg hover:-translate-y-0.5 transition-all text-white font-bold text-sm ${btnGreen}`} 
         >
           Login Sekarang
         </button>
@@ -384,7 +384,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode }) => {
                 </a>
               </li>
               <li>
-                <a href="#" className="hover:text-white">
+                <a onClick={onStart} href="#" className="hover:text-white" >
                   Panduan
                 </a>
               </li>

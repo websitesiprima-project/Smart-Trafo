@@ -401,9 +401,11 @@ export default function Home() {
         <Toaster />
         <button
           onClick={() => setShowLogin(false)}
-          className="fixed top-4 left-4 z-50 text-white bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm"
+          className="fixed top-4 right-4 z-50 flex items-center gap-1 sm:gap-2 text-white bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-600 hover:to-slate-700 px-3 py-2 sm:px-5 sm:py-2.5 rounded-full backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 border border-white/10 hover:border-white/20 text-xs sm:text-sm font-medium"
         >
-          <ArrowLeft size={16} /> Kembali
+          <ArrowLeft size={16} className="sm:w-[18px] sm:h-[18px]" />
+          <span className="hidden sm:inline">Kembali</span>
+          <span className="sm:hidden">Kembali</span>
         </button>
         {/* LOGIN PAGE JUGA DI-SUSPENSE AGAR AMAN */}
         <LoginPage onLoginSuccess={() => {
