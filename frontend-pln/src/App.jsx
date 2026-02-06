@@ -154,6 +154,7 @@ export default function Home() {
 
   useEffect(() => {
     let mounted = true;
+
     const handleSession = async (currentSession) => {
       try {
         if (currentSession) {
@@ -177,13 +178,10 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Hanya handle session saja, TIDAK redirect ke dashboard
+      // Redirect ke dashboard sudah ditangani oleh onLoginSuccess di LoginPage
       handleSession(session);
-      // Redirect ke dashboard saat user baru login
-      if (event === "SIGNED_IN" && session) {
-        setActivePage("dashboard");
-        localStorage.setItem("pln-smart-trafo-activepage", "dashboard");
-      }
     });
 
     const safetyTimer = setTimeout(() => {
