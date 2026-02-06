@@ -3,8 +3,9 @@ import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { Zap, Loader2, Lock, Mail, ArrowRight, Activity } from "lucide-react";
 import { toast, Toaster } from "sonner"; // Ensure Toaster is imported
+import ThemeToggle from "./Themetoggle";
 
-const LoginPage = ({ onLoginSuccess }) => {
+const LoginPage = ({ onLoginSuccess, isDarkMode, toggleTheme }) => {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,19 +70,24 @@ const LoginPage = ({ onLoginSuccess }) => {
         </div>
       )}
 
-      <div className="min-h-screen flex bg-[#0f172a] font-sans overflow-hidden">
+      <div className={`min-h-screen flex font-sans overflow-hidden ${isDarkMode ? "bg-[#0f172a]" : "bg-gradient-to-br from-slate-50 to-slate-100"}`}>
+        {/* Theme Toggle Button - Fixed Position */}
+        <div className="fixed bottom-3 left-20 z-50">
+          <ThemeToggle isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
+        </div>
+
         {/* --- LEFT SECTION (IMAGE & BRANDING) --- */}
         <div
-          className={`hidden lg:flex w-1/2 relative bg-gray-900 transition-all duration-1000 ease-out ${mounted ? "translate-x-0 opacity-100" : "-translate-x-10 opacity-0"}`}
+          className={`hidden lg:flex w-1/2 relative transition-all duration-1000 ease-out ${isDarkMode ? "bg-gray-900" : "bg-gradient-to-br from-[#1B7A8F] to-[#155d6d]"} ${mounted ? "translate-x-0 opacity-100" : "-translate-x-10 opacity-0"}`}
         >
           {/* Background Image with Overlay */}
           <div className="absolute inset-0 z-0">
             <img
               src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?q=80&w=2070&auto=format&fit=crop"
               alt="Substation"
-              className="w-full h-full object-cover opacity-40 mix-blend-overlay"
+              className={`w-full h-full object-cover mix-blend-overlay ${isDarkMode ? "opacity-40" : "opacity-20"}`}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/80 to-transparent"></div>
+            <div className={`absolute inset-0 ${isDarkMode ? "bg-gradient-to-t from-[#0f172a] via-[#0f172a]/80 to-transparent" : "bg-gradient-to-t from-[#1B7A8F] via-[#1B7A8F]/60 to-transparent"}`}></div>
           </div>
 
           {/* Left Content */}
@@ -99,89 +105,94 @@ const LoginPage = ({ onLoginSuccess }) => {
             </div>
 
             <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1B7A8F]/20 border border-[#1B7A8F]/30 text-[#4fd1c5] text-xs font-bold uppercase tracking-wider backdrop-blur-sm">
+              <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full backdrop-blur-sm text-xs font-bold uppercase tracking-wider ${isDarkMode ? "bg-[#1B7A8F]/20 border border-[#1B7A8F]/30 text-[#4fd1c5]" : "bg-white/30 border border-white/50 text-white"}`}>
                 <Activity size={14} /> Sistem Monitoring Real-time
               </div>
               <h1 className="text-5xl font-extrabold text-white leading-tight">
                 Smart Asset <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FFD700] to-[#f59e0b]">
+                <span className={`text-transparent bg-clip-text ${isDarkMode ? "bg-gradient-to-r from-[#FFD700] to-[#f59e0b]" : "bg-gradient-to-r from-white to-slate-100"}`}>
                   Management
                 </span>
               </h1>
-              <p className="text-slate-400 text-lg max-w-md leading-relaxed">
+              <p className={`text-lg max-w-md leading-relaxed ${isDarkMode ? "text-slate-400" : "text-white/90"}`}>
                 Platform terintegrasi untuk analisis DGA, pemantauan kesehatan
                 trafo, dan prediksi pemeliharaan berbasis AI.
               </p>
             </div>
 
-            <div className="text-slate-500 text-sm">
+            <div className={`text-sm ${isDarkMode ? "text-slate-500" : "text-white/70"}`}>
               &copy; 2026 PT PLN (Persero). All rights reserved.
             </div>
           </div>
         </div>
 
         {/* --- RIGHT SECTION (LOGIN FORM) --- */}
-        <div className="w-full lg:w-1/2 flex items-center justify-center p-6 relative">
+        <div className={`w-full lg:w-1/2 flex items-center justify-center p-6 relative ${isDarkMode ? "" : "bg-white"}`}>
           {/* Background Decoration */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-[#1B7A8F] rounded-full blur-[120px] opacity-10 pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#FFD700] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
 
           <div
-            className={`w-full max-w-md space-y-8 transition-all duration-1000 delay-300 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
+            className={`w-full max-w-md transition-all duration-1000 delay-300 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
           >
-            {/* Mobile Only Header (Logo) */}
-            <div className="lg:hidden flex flex-col items-center mb-8">
-              <div className="w-16 h-16 bg-[#1e293b] rounded-2xl flex items-center justify-center shadow-lg border border-slate-700 mb-4">
-                <Zap className="text-[#FFD700]" size={32} fill="currentColor" />
+            {/* Shadow Layer */}
+            <div className={`absolute inset-0 rounded-2xl blur-xl ${isDarkMode ? "bg-slate-900/40" : "bg-slate-300/40"}`} style={{maxWidth: '28rem'}}></div>
+            
+            {/* Card Container */}
+            <div className={`relative rounded-2xl p-8 sm:p-10 backdrop-blur-sm border ${isDarkMode ? "bg-slate-800/80 border-slate-700/50" : "bg-slate-100/80 border-slate-200/50"} shadow-2xl`}>
+              {/* Mobile Only Header (Logo) */}
+              <div className="lg:hidden flex flex-col items-center mb-8">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg border mb-4 ${isDarkMode ? "bg-[#1e293b] border-slate-700" : "bg-[#1e293b] border-blue-200"}`}>
+                  <Zap className="text-[#FFD700]" size={32} fill="currentColor" />
+                </div>
+                <h2 className={`text-2xl font-bold ${isDarkMode ? "text-white" : "text-slate-800"}`}>PLN SMART</h2>
               </div>
-              <h2 className="text-2xl font-bold text-white">PLN SMART</h2>
-            </div>
 
-            <div className="text-center lg:text-left">
-              <h2 className="text-3xl font-bold text-white">
-                Selamat Datang Kembali
-              </h2>
-              <p className="text-slate-400 mt-2">
-                Masukan kredensial akun UPT Anda.
-              </p>
-            </div>
+              <div className="text-center lg:text-left">
+                <h2 className={`text-3xl font-bold ${isDarkMode ? "text-white" : "text-slate-800"}`}>
+                  Selamat Datang Kembali
+                </h2>
+                <p className={`mt-2 ${isDarkMode ? "text-slate-400" : "text-slate-600"}`}>
+                  Masukan kredensial akun UPT Anda.
+                </p>
+              </div>
 
-            <form onSubmit={handleLogin} className="space-y-6 mt-8">
+              <form onSubmit={handleLogin} className="space-y-6 mt-8">
               <div className="space-y-2 group">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1 group-focus-within:text-[#1B7A8F] transition-colors">
+                <label className={`text-xs font-semibold uppercase tracking-wider ml-1 transition-colors ${isDarkMode ? "text-slate-400 group-focus-within:text-[#1B7A8F]" : "text-slate-700 group-focus-within:text-[#1B7A8F]"}`}>
                   Email Korporat
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-slate-500 group-focus-within:text-[#1B7A8F] transition-colors" />
+                    <Mail className={`h-5 w-5 transition-colors ${isDarkMode ? "text-slate-500 group-focus-within:text-[#1B7A8F]" : "text-slate-400 group-focus-within:text-[#1B7A8F]"}`} />
                   </div>
                   <input
                     type="email"
-                    data-testid="email-input" // 🔥 Added for Testing
+                    data-testid="email-input"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="block w-full pl-11 pr-4 py-3.5 bg-[#1e293b]/50 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-[#1B7A8F]/50 focus:border-[#1B7A8F] transition-all"
+                    className={`block w-full pl-11 pr-4 py-3.5 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-[#1B7A8F]/50 focus:border-[#1B7A8F] shadow-sm ${isDarkMode ? "bg-slate-900/50 border-2 border-blue-400 text-slate-100 placeholder-slate-500" : "bg-white border-2 border-[#1B7A8F] text-slate-900 placeholder-slate-400"}`}
                     placeholder="nama@pln.co.id"
                   />
                 </div>
               </div>
 
               <div className="space-y-2 group">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1 group-focus-within:text-[#FFD700] transition-colors">
+                <label className={`text-xs font-semibold uppercase tracking-wider ml-1 transition-colors ${isDarkMode ? "text-slate-400 group-focus-within:text-[#FFD700]" : "text-slate-700 group-focus-within:text-[#FFD700]"}`}>
                   Password
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-slate-500 group-focus-within:text-[#FFD700] transition-colors" />
+                    <Lock className={`h-5 w-5 transition-colors ${isDarkMode ? "text-slate-500 group-focus-within:text-[#FFD700]" : "text-slate-400 group-focus-within:text-[#FFD700]"}`} />
                   </div>
                   <input
                     type="password"
-                    data-testid="password-input" // 🔥 Added for Testing
+                    data-testid="password-input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="block w-full pl-11 pr-4 py-3.5 bg-[#1e293b]/50 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-[#FFD700]/50 focus:border-[#FFD700] transition-all"
+                    className={`block w-full pl-11 pr-4 py-3.5 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-[#FFD700]/50 focus:border-[#FFD700] shadow-sm ${isDarkMode ? "bg-slate-900/50 border-2 border-cyan-400 text-slate-100 placeholder-slate-500" : "bg-white border-2 border-[#1B7A8F] text-slate-900 placeholder-slate-400"}`}
                     placeholder="••••••••"
                   />
                 </div>
@@ -211,23 +222,23 @@ const LoginPage = ({ onLoginSuccess }) => {
                   )}
                 </div>
               </button>
-            </form>
+              </form>
 
-            <div className="pt-6 text-center">
-              <div className="text-slate-500 text-sm">
-                {" "}
-                {/* Changed <p> to <div> */}
-                Lupa password atau kendala akses?{" "}
-                <button
-                  onClick={() =>
-                    toast.info("Silakan hubungi Admin ULTG di Extension 123")
-                  }
-                  className="text-[#1B7A8F] font-bold hover:text-[#FFD700] transition-colors hover:underline"
-                >
-                  Hubungi SuperAdmin (UPT MANADO)
-                </button>
+              <div className="pt-6 text-center">
+                <div className={`text-sm ${isDarkMode ? "text-slate-500" : "text-slate-600"}`}>
+                  Lupa password atau kendala akses?{" "}
+                  <button
+                    onClick={() =>
+                      toast.info("Silakan hubungi Admin ULTG di Extension 123")
+                    }
+                    className={`font-bold transition-colors hover:underline ${isDarkMode ? "text-[#1B7A8F] hover:text-[#FFD700]" : "text-[#1B7A8F] hover:text-[#16697a]"}`}
+                  >
+                    Hubungi SuperAdmin (UPT MANADO)
+                  </button>
+                </div>
               </div>
             </div>
+            {/* End Card Container */}
           </div>
         </div>
       </div>

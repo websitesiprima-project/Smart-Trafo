@@ -26,7 +26,7 @@ import PageTransition from "./components/PageTransition";
 import LoadingScreen from "./components/LoadingScreen";
 import VoltyAssistant from "./components/VoltyAssistant";
 import VoltyMascot from "./components/VoltyMascot";
-import ThemeToggle from "./components/ThemeToggle";
+import ThemeToggle from "./components/Themetoggle";
 import useAutoLogout from "./hooks/useAutoLogout";
 
 // 🔥 OPTIMASI JS: SEMUA HALAMAN UTAMA DI-LAZY LOAD
@@ -416,7 +416,7 @@ export default function Home() {
           setTimeout(() => {
             fetchHistory();
           }, 500);
-        }} />
+        }} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
       </Suspense>
     ) : (
       <Suspense fallback={<LoadingScreen />}>
@@ -424,6 +424,7 @@ export default function Home() {
           onStart={() => setShowLogin(true)}
           onGuide={() => setShowLogin(true)}
           isDarkMode={isDarkMode}
+          toggleTheme={toggleTheme}
         />
       </Suspense>
     );
@@ -582,13 +583,6 @@ export default function Home() {
                 Admin Area
               </p>
               <MenuButton
-                icon={<ShieldCheck size={20} className="text-purple-500" />}
-                label="Kelola Aset"
-                active={activePage === "super_admin"}
-                onClick={() => navigateTo("super_admin")}
-                isDarkMode={isDarkMode}
-              />
-              <MenuButton
                 icon={<Users size={20} className="text-blue-500" />}
                 label="Manajemen User"
                 active={activePage === "user_management"}
@@ -600,6 +594,13 @@ export default function Home() {
                 label="Manajemen Unit"
                 active={activePage === "unit_management"}
                 onClick={() => navigateTo("unit_management")}
+                isDarkMode={isDarkMode}
+              />
+              <MenuButton
+                icon={<ShieldCheck size={20} className="text-purple-500" />}
+                label="Kelola Aset"
+                active={activePage === "super_admin"}
+                onClick={() => navigateTo("super_admin")}
                 isDarkMode={isDarkMode}
               />
             </div>
