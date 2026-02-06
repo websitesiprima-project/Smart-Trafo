@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { Zap, Loader2, Lock, Mail, ArrowRight, Activity } from "lucide-react";
-import { toast, Toaster } from "sonner"; // Pastikan Toaster diimport
+import { toast, Toaster } from "sonner"; // Ensure Toaster is imported
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
@@ -10,7 +10,7 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState("");
   const [mounted, setMounted] = useState(false);
 
-  // Efek animasi saat mount
+  // Animation effect on mount
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -70,11 +70,11 @@ const LoginPage = ({ onLoginSuccess }) => {
       )}
 
       <div className="min-h-screen flex bg-[#0f172a] font-sans overflow-hidden">
-        {/* --- BAGIAN KIRI (IMAGE & BRANDING) --- */}
+        {/* --- LEFT SECTION (IMAGE & BRANDING) --- */}
         <div
           className={`hidden lg:flex w-1/2 relative bg-gray-900 transition-all duration-1000 ease-out ${mounted ? "translate-x-0 opacity-100" : "-translate-x-10 opacity-0"}`}
         >
-          {/* Background Image dengan Overlay */}
+          {/* Background Image with Overlay */}
           <div className="absolute inset-0 z-0">
             <img
               src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?q=80&w=2070&auto=format&fit=crop"
@@ -84,7 +84,7 @@ const LoginPage = ({ onLoginSuccess }) => {
             <div className="absolute inset-0 bg-gradient-to-t from-[#0f172a] via-[#0f172a]/80 to-transparent"></div>
           </div>
 
-          {/* Content Kiri */}
+          {/* Left Content */}
           <div className="relative z-10 flex flex-col justify-between p-16 w-full">
             <div className="flex items-center gap-3">
               <img
@@ -120,16 +120,16 @@ const LoginPage = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* --- BAGIAN KANAN (FORM LOGIN) --- */}
+        {/* --- RIGHT SECTION (LOGIN FORM) --- */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-6 relative">
-          {/* Dekorasi Background */}
+          {/* Background Decoration */}
           <div className="absolute top-0 right-0 w-96 h-96 bg-[#1B7A8F] rounded-full blur-[120px] opacity-10 pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#FFD700] rounded-full blur-[100px] opacity-5 pointer-events-none"></div>
 
           <div
             className={`w-full max-w-md space-y-8 transition-all duration-1000 delay-300 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
           >
-            {/* Header Mobile Only (Logo) */}
+            {/* Mobile Only Header (Logo) */}
             <div className="lg:hidden flex flex-col items-center mb-8">
               <div className="w-16 h-16 bg-[#1e293b] rounded-2xl flex items-center justify-center shadow-lg border border-slate-700 mb-4">
                 <Zap className="text-[#FFD700]" size={32} fill="currentColor" />
@@ -214,14 +214,19 @@ const LoginPage = ({ onLoginSuccess }) => {
             </form>
 
             <div className="pt-6 text-center">
-              <p className="text-slate-500 text-sm">
+              <div className="text-slate-500 text-sm">
+                {" "}
+                {/* Changed <p> to <div> */}
                 Lupa password atau kendala akses?{" "}
-                <p
-                  className="text-[#1B7A8F] font-bold hover:text-[#FFD700] transition-colors"
+                <button
+                  onClick={() =>
+                    toast.info("Silakan hubungi Admin ULTG di Extension 123")
+                  }
+                  className="text-[#1B7A8F] font-bold hover:text-[#FFD700] transition-colors hover:underline"
                 >
                   Hubungi SuperAdmin (UPT MANADO)
-                </p>
-              </p>
+                </button>
+              </div>
             </div>
           </div>
         </div>

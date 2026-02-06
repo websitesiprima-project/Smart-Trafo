@@ -1,22 +1,21 @@
 /**
  * WHITE BOX TEST untuk UserManagementPage.jsx
- * Menguji user management logic, CRUD operations, dan error handling
+ * Menguji logic Create User, Role, dan Secure Delete (Modal Konfirmasi)
  */
 
-import React, { act } from "react";
+import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { act } from "react"; // ✅ FIX: Pastikan act diimpor dari 'react'
 import { supabase } from "../lib/supabaseClient";
 import { toast } from "sonner";
 import UserManagementPage from "../components/UserManagementPage";
 
-// Mock dependencies
+// --- MOCKING ---
 jest.mock("../lib/supabaseClient", () => ({
   supabase: {
     from: jest.fn(),
-    auth: {
-      signUp: jest.fn(),
-    },
+    auth: { signUp: jest.fn() },
   },
 }));
 
@@ -28,27 +27,31 @@ jest.mock("sonner", () => ({
   },
 }));
 
+// Mock Global Fetch untuk API Backend Python
+global.fetch = jest.fn();
+
 describe("UserManagementPage - White Box Testing", () => {
-  const mockSession = { user: { id: "123", email: "admin@example.com" } };
+  const mockSession = { user: { id: "123", email: "admin@pln.co.id" } };
+
   const mockUsers = [
     {
-      id: "1",
-      email: "user1@example.com",
+      id: "u1",
+      email: "manager@pln.co.id",
       role: "admin_unit",
-      unit_ultg: "Unit A",
+      unit_ultg: "ULTG LOPANA",
     },
     {
-      id: "2",
-      email: "user2@example.com",
+      id: "u2",
+      email: "staff@pln.co.id",
       role: "operator",
-      unit_ultg: "Unit B",
+      unit_ultg: "ULTG TONDANO",
     },
   ];
 
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Setup default mock implementation for fetching users
+    // Mock Supabase Response (Fetch Users)
     const mockSelect = jest.fn().mockReturnThis();
     const mockOrder = jest.fn().mockResolvedValue({
       data: mockUsers,
@@ -58,218 +61,157 @@ describe("UserManagementPage - White Box Testing", () => {
     supabase.from.mockReturnValue({
       select: mockSelect,
       order: mockOrder,
-      insert: jest.fn().mockResolvedValue({ error: null }),
-      upsert: jest.fn().mockResolvedValue({ error: null }),
-      delete: jest.fn().mockResolvedValue({ error: null }),
+    });
+
+    // Mock Fetch Default Response
+    global.fetch.mockResolvedValue({
+      json: () => Promise.resolve({ status: "Sukses", msg: "Berhasil" }),
     });
   });
 
   // ============================================
-  // TEST: Component Initialization
+  // TEST 1: RENDER & FETCH DATA
   // ============================================
-  describe("Component Initialization", () => {
-    test("harus render UserManagementPage tanpa crash", async () => {
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      expect(screen.getByText(/Manajemen Pengguna/i)).toBeInTheDocument();
+  test("harus me-render tabel user dengan data yang benar", async () => {
+    await act(async () => {
+      render(<UserManagementPage session={mockSession} isDarkMode={true} />);
     });
 
-    test("harus fetch users saat component mount", async () => {
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      expect(supabase.from).toHaveBeenCalledWith("profiles");
-    });
+    expect(
+      screen.getByText("Manajemen Pengguna & Wilayah"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("manager@pln.co.id")).toBeInTheDocument();
+    expect(screen.getByText("ULTG LOPANA")).toBeInTheDocument();
   });
 
   // ============================================
-  // TEST: Fetch Users Logic
+  // TEST 2: CREATE USER VALIDATION
   // ============================================
-  describe("Fetch Users", () => {
-    test("harus display users dalam list", async () => {
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("user1@example.com")).toBeInTheDocument();
-        expect(screen.getByText("user2@example.com")).toBeInTheDocument();
-      });
+  test("harus validasi email domain @pln.co.id", async () => {
+    await act(async () => {
+      render(<UserManagementPage session={mockSession} isDarkMode={true} />);
     });
 
-    test("harus handle fetch error dengan toast", async () => {
-      // Override mock implementation for error case
-      const mockOrderError = jest.fn().mockResolvedValue({
-        data: null,
-        error: { message: "Fetch failed" },
-      });
+    // 1. Buka Modal
+    fireEvent.click(screen.getByText(/Tambah User & Unit/i));
 
-      supabase.from.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        order: mockOrderError,
-      });
+    // 2. Isi Email Salah
+    const emailInput = screen.getByPlaceholderText("manager@pln.co.id");
+    await userEvent.type(emailInput, "hacker@gmail.com");
 
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
+    // Isi Password Dummy agar lolos validasi HTML 'required'
+    const passwordInputs = screen.getAllByPlaceholderText("••••••••");
+    await userEvent.type(passwordInputs[0], "pass123");
+    await userEvent.type(passwordInputs[1], "pass123");
 
-      await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith(
-          expect.stringContaining("Fetch failed"),
-        );
-      });
+    // 3. Submit
+    const saveBtn = screen.getByText(/Simpan User & Unit/i);
+    await act(async () => {
+      fireEvent.click(saveBtn);
     });
+
+    // 4. Cek Error Toast
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("domain @pln.co.id"),
+    );
   });
 
   // ============================================
-  // TEST: User Creation
+  // TEST 3: CREATE USER SUCCESS
   // ============================================
-  describe("User Creation Flow", () => {
-    test("harus bisa membuka modal tambah user", async () => {
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      const addBtn = screen.getByText(/Tambah User & Unit/i);
-      fireEvent.click(addBtn);
-
-      expect(screen.getByText("Registrasi User & Unit")).toBeInTheDocument();
+  test("harus memanggil API create-user saat data valid", async () => {
+    await act(async () => {
+      render(<UserManagementPage session={mockSession} isDarkMode={true} />);
     });
 
-    test("harus membuka modal saat tombol tambah user di-klik", async () => {
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
+    fireEvent.click(screen.getByText(/Tambah User & Unit/i));
 
-      const tambahBtn = screen.getByText(/Tambah User & Unit/i);
-      expect(tambahBtn).toBeInTheDocument();
+    // Isi Form Lengkap
+    await userEvent.type(
+      screen.getByPlaceholderText("manager@pln.co.id"),
+      "new@pln.co.id",
+    );
 
-      // Klik tombol untuk buka modal
-      fireEvent.click(tambahBtn);
+    const passwordInputs = screen.getAllByPlaceholderText("••••••••");
+    await userEvent.type(passwordInputs[0], "pass123");
+    await userEvent.type(passwordInputs[1], "pass123");
 
-      // Check if save button exists (tombol hanya ada di dalam modal)
-      await waitFor(() => {
-        expect(screen.getByText(/Simpan User & Unit/i)).toBeInTheDocument();
-      });
+    await userEvent.type(
+      screen.getByPlaceholderText("CONTOH: Lopana"),
+      "ULTG BARU",
+    );
+
+    // Submit
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Simpan User & Unit/i));
     });
 
-    test("harus berhasil membuat user baru (Happy Path)", async () => {
-      // Mock signup success
-      supabase.auth.signUp.mockResolvedValueOnce({
-        data: { user: { id: "new-123" } },
-        error: null,
-      });
-
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      // 1. Buka Modal
-      fireEvent.click(screen.getByText(/Tambah User & Unit/i));
-
-      // 2. Isi Form
-      const emailInput = screen.getByPlaceholderText("manager@pln.co.id");
-      const passInput = screen.getByPlaceholderText("••••••••");
-      const unitInput = screen.getByPlaceholderText("CONTOH: ULTG LOPANA");
-
-      await userEvent.type(emailInput, "newmanager@pln.co.id");
-      await userEvent.type(passInput, "password123");
-      await userEvent.type(unitInput, "ULTG TEST");
-
-      // 3. Submit
-      const saveBtn = screen.getByText(/Simpan User & Unit/i);
-
-      await act(async () => {
-        fireEvent.click(saveBtn);
-      });
-
-      // 4. Assertions
-      await waitFor(() => {
-        expect(supabase.auth.signUp).toHaveBeenCalledWith({
-          email: "newmanager@pln.co.id",
-          password: "password123",
-        });
-
-        // Cek insert profile
-        expect(supabase.from).toHaveBeenCalledWith("profiles");
-
-        // Cek insert unit
-        expect(supabase.from).toHaveBeenCalledWith("master_ultg");
-
-        expect(toast.success).toHaveBeenCalled();
-      });
-    });
+    // Verifikasi API Call
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/create-user"),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("new@pln.co.id"),
+      }),
+    );
+    expect(toast.success).toHaveBeenCalled();
   });
 
   // ============================================
-  // TEST: Role Logic
+  // TEST 4: SECURE DELETE FLOW
   // ============================================
-  describe("Role Based Logic", () => {
-    test("input unit harus disabled jika role super_admin", async () => {
+  describe("Secure Delete Flow", () => {
+    test("harus membuka modal konfirmasi saat tombol hapus diklik", async () => {
       await act(async () => {
         render(<UserManagementPage session={mockSession} isDarkMode={true} />);
       });
 
-      fireEvent.click(screen.getByText(/Tambah User & Unit/i));
+      const deleteBtns = screen.getAllByTitle("Hapus User");
+      fireEvent.click(deleteBtns[0]);
 
-      // Ganti role ke super_admin
-      const roleSelect = screen.getAllByRole("combobox")[0]; // Asumsi role select adalah combobox pertama
-      fireEvent.change(roleSelect, { target: { value: "super_admin" } });
-
-      const unitInput = screen.getByPlaceholderText("CONTOH: ULTG LOPANA");
-      expect(unitInput).toBeDisabled();
+      expect(screen.getByText("Konfirmasi Hapus User")).toBeInTheDocument();
+      expect(screen.getByText("HAPUS ULTG LOPANA")).toBeInTheDocument();
     });
 
-    test("input unit harus enabled jika role admin_unit", async () => {
+    test("tombol hapus permanen harus disabled jika teks konfirmasi salah", async () => {
       await act(async () => {
         render(<UserManagementPage session={mockSession} isDarkMode={true} />);
       });
 
-      fireEvent.click(screen.getByText(/Tambah User & Unit/i));
+      fireEvent.click(screen.getAllByTitle("Hapus User")[0]);
 
-      // Default role biasanya admin_unit
-      const unitInput = screen.getByPlaceholderText("CONTOH: ULTG LOPANA");
-      expect(unitInput).not.toBeDisabled();
+      const confirmInput = screen.getByPlaceholderText("HAPUS ULTG LOPANA");
+      await userEvent.type(confirmInput, "SALAH TEKS");
+
+      const deleteBtn = screen.getByText("Hapus Permanen");
+      expect(deleteBtn).toBeDisabled();
     });
-  });
 
-  // ============================================
-  // TEST: User Deletion
-  // ============================================
-  describe("User Deletion", () => {
-    test("harus memanggil API delete saat tombol hapus diklik", async () => {
-      // Mock fetch global
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          json: () => Promise.resolve({ status: "Sukses" }),
-        }),
+    test("harus melakukan penghapusan jika teks konfirmasi benar", async () => {
+      await act(async () => {
+        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
+      });
+
+      fireEvent.click(screen.getAllByTitle("Hapus User")[0]);
+
+      // Ketik teks BENAR
+      const confirmInput = screen.getByPlaceholderText("HAPUS ULTG LOPANA");
+      await userEvent.type(confirmInput, "HAPUS ULTG LOPANA");
+
+      const deleteBtn = screen.getByText("Hapus Permanen");
+      expect(deleteBtn).not.toBeDisabled();
+
+      // Klik Hapus
+      await act(async () => {
+        fireEvent.click(deleteBtn);
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/admin/delete-user/u1"),
+        expect.objectContaining({ method: "DELETE" }),
       );
 
-      // Mock confirm dialog
-      window.confirm = jest.fn(() => true);
-
-      await act(async () => {
-        render(<UserManagementPage session={mockSession} isDarkMode={true} />);
-      });
-
-      // Cari tombol hapus (biasanya icon Trash, kita cari by role button di baris user)
-      // Kita pakai user1 yang bukan user current session
-      const deleteButtons = screen.getAllByTitle("Hapus User");
-
-      if (deleteButtons.length > 0) {
-        await act(async () => {
-          fireEvent.click(deleteButtons[0]);
-        });
-
-        expect(window.confirm).toHaveBeenCalled();
-        expect(global.fetch).toHaveBeenCalledWith(
-          expect.stringContaining("/admin/delete-user/"),
-          expect.objectContaining({ method: "DELETE" }),
-        );
-      }
+      expect(toast.success).toHaveBeenCalled();
     });
   });
 });

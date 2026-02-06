@@ -1,6 +1,6 @@
 // File: src/components/ThemeToggle.jsx
+import React from "react";
 import styled from "styled-components";
-
 const ThemeToggle = ({ isDarkMode, toggleTheme }) => {
   return (
     <StyledWrapper>

@@ -1,5 +1,10 @@
 // setupTests.js - Setup untuk Jest
 import "@testing-library/jest-dom";
+import { TextEncoder, TextDecoder } from "util"; // ✅ Tambahkan ini
+
+// ✅ Definisikan TextEncoder secara global agar library Leaflet/React-DOM-Server tidak error
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
 
 // Suppress React act() warnings dalam testing environment
 const originalError = console.error;
@@ -34,6 +39,10 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: jest.fn(),
   })),
 });
+
+// Mock window.scrollTo & scrollIntoView (Penting untuk VoltyAssistant)
+window.HTMLElement.prototype.scrollIntoView = jest.fn();
+window.scrollTo = jest.fn();
 
 // Mock Supabase
 jest.mock("./lib/supabaseClient", () => ({
