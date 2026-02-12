@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, MessageCircle } from "lucide-react";
-import VoltyMascot from "./VoltyMascot"; // Pastikan file di atas sudah dibuat
+import VoltyMascot from "./VoltyMascot"; // Pastikan path import ini benar
 
-// DATABASE PENGETAHUAN LOKAL
+// --- DATABASE PENGETAHUAN LOKAL (Tooltip Cepat) ---
 const knowledgeBase = {
   id_trafo: {
     title: "Identitas Trafo",
@@ -52,21 +52,30 @@ const knowledgeBase = {
   },
 };
 
+// --- FUNGSI PEMBERSIH TEKS AI (Hapus # dan *) ---
+const cleanMarkdown = (text) => {
+  if (!text) return "";
+  return text
+    .replace(/[#*]/g, "") // Hapus karakter # dan *
+    .replace(/\n\s*\n/g, "\n") // Hapus baris kosong berlebih
+    .trim();
+};
+
 const VoltyAssistant = ({ activeField, onClose }) => {
   const [mode, setMode] = useState("hidden"); // 'hidden', 'info', 'chat'
   const [chatInput, setChatInput] = useState("");
-  const [chatHistory, setChatHistory] = useState([]); // Riwayat chat {user: string, ai: string, timestamp: Date}
+  const [chatHistory, setChatHistory] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
-  const chatEndRef = useRef(null); // Ref untuk auto-scroll ke bawah
+  const chatEndRef = useRef(null);
 
-  // Scroll ke pesan terbaru setiap kali chat history berubah
+  // Auto-scroll ke bawah saat ada chat baru
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatHistory, isTyping]);
+  }, [chatHistory, isTyping, mode]); // Tambahkan 'mode' agar scroll pas buka chat
 
-  // Load chat history dari localStorage saat komponen mount
+  // Load History
   useEffect(() => {
     const savedHistory = localStorage.getItem("volty_chat_history");
     if (savedHistory) {
@@ -78,59 +87,58 @@ const VoltyAssistant = ({ activeField, onClose }) => {
     }
   }, []);
 
-  // Save chat history ke localStorage setiap kali berubah
+  // Save History
   useEffect(() => {
     if (chatHistory.length > 0) {
       localStorage.setItem("volty_chat_history", JSON.stringify(chatHistory));
     }
   }, [chatHistory]);
 
-  // EFEK 1: JIKA PARENT MENGIRIM TRIGGER (activeField), MASUK MODE INFO
+  // Mode Info Trigger
   useEffect(() => {
     if (activeField && knowledgeBase[activeField]) {
       setMode("info");
     } else if (!activeField && mode === "info") {
-      setMode("hidden"); // Jika trigger hilang dan sedang mode info, sembunyi
+      setMode("hidden");
     }
   }, [activeField]);
 
-  // FUNGSI KIRIM CHAT KE GEMINI/LLAMA (BACKEND)
+  // Kirim Pesan ke Backend
   const handleSendChat = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
     const userMsg = chatInput;
-    setChatInput(""); // Kosongkan input
-    setIsTyping(true); // Volty bicara (animasi mulut)
+    setChatInput("");
+    setIsTyping(true);
 
     try {
-      // Pastikan Backend Python Jalan di Port 8000
+      // Backend URL (Sesuaikan jika perlu)
       const res = await fetch("http://127.0.0.1:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg }),
       });
       const data = await res.json();
-      
-      // Tambahkan ke riwayat chat
+
       const newChat = {
         user: userMsg,
-        ai: data.reply,
-        timestamp: new Date().toISOString()
+        ai: data.reply, // Nanti akan dibersihkan saat render
+        timestamp: new Date().toISOString(),
       };
-      setChatHistory(prev => [...prev, newChat]);
+      setChatHistory((prev) => [...prev, newChat]);
     } catch (error) {
       const errorChat = {
         user: userMsg,
         ai: "Maaf, koneksi ke otak saya terputus (Backend Offline). 😢",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-      setChatHistory(prev => [...prev, errorChat]);
+      setChatHistory((prev) => [...prev, errorChat]);
     }
     setIsTyping(false);
   };
 
-  // TENTUKAN ISI KONTEN BERDASARKAN MODE
+  // Tentukan Konten Bubble
   let title = "";
   let textContent = "";
   let borderColor = "border-slate-500";
@@ -147,7 +155,7 @@ const VoltyAssistant = ({ activeField, onClose }) => {
   return (
     <>
       <AnimatePresence>
-        {/* --- 1. TOMBOL CHAT FLOATING (Muncul jika Volty sedang sembunyi) --- */}
+        {/* 1. TOMBOL FLOATING (Muncul saat hidden) */}
         {mode === "hidden" && (
           <motion.button
             key="chat-btn"
@@ -160,7 +168,6 @@ const VoltyAssistant = ({ activeField, onClose }) => {
             className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 lg:bottom-8 lg:right-8 bg-[#1B7A8F] text-white p-3 sm:p-4 rounded-full shadow-2xl z-40 hover:bg-[#156b7d] transition-colors flex items-center justify-center border-2 sm:border-4 border-white"
           >
             <MessageCircle size={24} className="sm:w-7 sm:h-7" />
-            {/* Badge Notifikasi Kecil */}
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
@@ -168,21 +175,21 @@ const VoltyAssistant = ({ activeField, onClose }) => {
           </motion.button>
         )}
 
-        {/* --- 2. VOLTY & BUBBLE (Muncul jika Mode Info atau Chat) --- */}
+        {/* 2. AREA CHAT / INFO */}
         {mode !== "hidden" && (
           <motion.div
             key="volty-container"
-            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 lg:bottom-8 lg:right-8 z-50 flex items-end gap-2 sm:gap-3 lg:gap-4 max-w-[95vw] sm:max-w-md pointer-events-none" // pointer-events-none agar tidak menghalangi klik di belakang area kosong
+            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 lg:bottom-8 lg:right-8 z-50 flex items-end gap-2 sm:gap-3 lg:gap-4 max-w-[95vw] sm:max-w-md pointer-events-none"
             initial={{ scale: 0, y: 100 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0, y: 100, opacity: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
           >
-            {/* BUBBLE PERCAKAPAN (pointer-events-auto agar bisa diklik) */}
+            {/* BUBBLE */}
             <div
-              className={`pointer-events-auto relative bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 dark:text-slate-200 w-[280px] sm:w-[320px] lg:w-80 flex flex-col transition-colors ${mode === 'chat' ? 'h-[400px] sm:h-[450px] lg:h-[500px]' : 'min-h-[120px] sm:min-h-[150px]'}`}
+              className={`pointer-events-auto relative bg-white dark:bg-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl rounded-br-none shadow-2xl border-l-4 ${borderColor} text-slate-700 dark:text-slate-200 w-[280px] sm:w-[320px] lg:w-80 flex flex-col transition-all ${mode === "chat" ? "h-[400px] sm:h-[450px] lg:h-[500px]" : "min-h-[120px] sm:min-h-[150px]"}`}
             >
-              {/* Header Bubble */}
+              {/* Header */}
               <div className="flex justify-between items-start mb-2 border-b border-slate-100 dark:border-slate-700 pb-2">
                 <h4 className="font-bold text-[10px] sm:text-xs uppercase tracking-wide flex items-center gap-1 sm:gap-2 text-slate-500 dark:text-slate-400">
                   💡 {title}
@@ -198,13 +205,13 @@ const VoltyAssistant = ({ activeField, onClose }) => {
                 </button>
               </div>
 
-              {/* Isi Pesan (Scrollable) */}
+              {/* Konten */}
               {mode === "info" ? (
                 <div className="text-xs sm:text-sm leading-relaxed mb-3 sm:mb-4 overflow-y-auto max-h-48 sm:max-h-60 pr-1 custom-scrollbar">
                   {textContent}
                 </div>
               ) : (
-                /* CHAT HISTORY */
+                /* --- LOGIKA TAMPILAN CHAT --- */
                 <div className="flex-1 overflow-y-auto mb-3 sm:mb-4 pr-1 custom-scrollbar space-y-2 sm:space-y-3">
                   {chatHistory.length === 0 ? (
                     <div className="text-center text-xs sm:text-sm opacity-60 mt-6 sm:mt-8">
@@ -219,10 +226,11 @@ const VoltyAssistant = ({ activeField, onClose }) => {
                             {chat.user}
                           </div>
                         </div>
-                        {/* AI Response */}
+                        {/* AI Response (SUDAH DIBERSIHKAN) */}
                         <div className="flex justify-start">
                           <div className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs p-1.5 sm:p-2 rounded-lg rounded-tl-none max-w-[85%] whitespace-pre-wrap">
-                            {chat.ai}
+                            {cleanMarkdown(chat.ai)}{" "}
+                            {/* <-- PEMBERSIHAN DISINI */}
                           </div>
                         </div>
                       </div>
@@ -231,16 +239,17 @@ const VoltyAssistant = ({ activeField, onClose }) => {
                   {isTyping && (
                     <div className="flex justify-start">
                       <div className="bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs p-1.5 sm:p-2 rounded-lg rounded-tl-none">
-                        <span className="animate-pulse">Volty sedang mengetik...</span>
+                        <span className="animate-pulse">
+                          Volty sedang mengetik...
+                        </span>
                       </div>
                     </div>
                   )}
-                  {/* Scroll anchor */}
                   <div ref={chatEndRef} />
                 </div>
               )}
 
-              {/* INPUT CHAT (Hanya muncul di Mode Chat) */}
+              {/* INPUT FORM (Mode Chat) */}
               {mode === "chat" && (
                 <form onSubmit={handleSendChat} className="mt-auto relative">
                   <input
@@ -261,7 +270,7 @@ const VoltyAssistant = ({ activeField, onClose }) => {
               )}
             </div>
 
-            {/* KARAKTER VOLTY (pointer-events-auto agar bisa diklik) */}
+            {/* MASCOT AVATAR */}
             <motion.div
               className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 flex-shrink-0 cursor-pointer pointer-events-auto"
               animate={{ y: [0, -5, 0] }}

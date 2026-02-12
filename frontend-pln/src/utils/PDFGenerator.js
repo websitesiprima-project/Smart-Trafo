@@ -44,6 +44,15 @@ const IEEE_LIMITS = {
 // FUNGSI UTILITAS
 // ============================================
 
+// --- FUNGSI PEMBERSIH TEKS (BARU DITAMBAHKAN) ---
+export const cleanMarkdown = (text) => {
+  if (!text) return "";
+  return text
+    .replace(/[#*]/g, "") // Hapus karakter # dan *
+    .replace(/\n\s*\n/g, "\n") // Hapus baris kosong berlebih
+    .trim();
+};
+
 // Fungsi untuk menghitung TDCG (Total Dissolved Combustible Gas) - tanpa CO2
 export const calculateTDCG = (data) => {
   return Math.round(
@@ -1169,13 +1178,9 @@ export const generatePDFFromTemplate = (data, options = { saveFile: true }) => {
     console.log("PDF Page 2 - hasil_ai:", data.hasil_ai);
     console.log("PDF Page 2 - hasAIResult:", hasAIResult);
 
-    // Tabel Kesimpulan
+    // Tabel Kesimpulan dengan CLEAN MARKDOWN
     const kesimpulanContent = hasAIResult
-      ? data.hasil_ai
-          .replace(/\\n/g, "\n")
-          .replace(/\*\*/g, "")
-          .replace(/\*/g, "•")
-          .trim()
+      ? cleanMarkdown(data.hasil_ai) // <-- MENGGUNAKAN CLEAN MARKDOWN
       : generateAutoKesimpulan(data);
 
     autoTable(doc, {

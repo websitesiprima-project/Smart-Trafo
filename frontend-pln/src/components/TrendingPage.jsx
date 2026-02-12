@@ -52,7 +52,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
 
   const isSuperAdmin = userRole === "super_admin";
 
-  // --- 1. PROSES LIST GI DARI MAPPING (Sama seperti InputForm) ---
+  // --- 1. PROSES LIST GI DARI MAPPING ---
   const availableGIs = useMemo(() => {
     let list = [];
     if (!unitMapping || Object.keys(unitMapping).length === 0) return [];
@@ -127,12 +127,14 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
     const fetchChartData = async () => {
       setLoadingChart(true);
       try {
+        // PERBAIKAN 1: Tambahkan sort by ID agar urutan input yang sama waktu tidak acak
         const { data, error } = await supabase
           .from("riwayat_uji")
           .select("*")
           .eq("lokasi_gi", selectedGI)
           .eq("nama_trafo", selectedTrafo)
-          .order("tanggal_sampling", { ascending: true });
+          .order("tanggal_sampling", { ascending: true })
+          .order("id", { ascending: true }); // Penting: Tie-breaker jika tanggal sama persis
 
         if (error) throw error;
         setChartHistory(data || []);
@@ -146,32 +148,54 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
     fetchChartData();
   }, [selectedGI, selectedTrafo]);
 
-  // --- OLAH DATA UNTUK RECHARTS ---
+  // --- 4. OLAH DATA UNTUK RECHARTS (PERBAIKAN LABEL DUPLIKAT) ---
   const processedData = useMemo(() => {
     if (!chartHistory.length) return [];
-    return chartHistory.map((d) => ({
-      ...d,
-      dateLabel: new Date(d.tanggal_sampling).toLocaleDateString("id-ID", {
+
+    // Tracker untuk mendeteksi tanggal yang kembar
+    const labelTracker = {};
+
+    return chartHistory.map((d) => {
+      // Format dasar: "06 Feb 25, 08.00"
+      let baseLabel = new Date(d.tanggal_sampling).toLocaleString("id-ID", {
         day: "2-digit",
         month: "short",
         year: "2-digit",
-      }),
-      H2: Number(d.h2 || 0),
-      CH4: Number(d.ch4 || 0),
-      C2H6: Number(d.c2h6 || 0),
-      C2H4: Number(d.c2h4 || 0),
-      C2H2: Number(d.c2h2 || 0),
-      CO: Number(d.co || 0),
-      CO2: Number(d.co2 || 0),
-      TDCG: d.tdcg
-        ? Number(d.tdcg)
-        : Number(d.h2) +
-          Number(d.ch4) +
-          Number(d.c2h6) +
-          Number(d.c2h4) +
-          Number(d.c2h2) +
-          Number(d.co),
-    }));
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      // LOGIKA ANTI-BENTROK:
+      // Jika label ini sudah ada sebelumnya, tambahkan nomor urut
+      if (labelTracker[baseLabel]) {
+        labelTracker[baseLabel] += 1;
+        // Ubah label jadi: "06 Feb 25, 08.00 (2)"
+        baseLabel = `${baseLabel} (${labelTracker[baseLabel]})`;
+      } else {
+        // Jika baru pertama kali muncul, set count = 1
+        labelTracker[baseLabel] = 1;
+      }
+
+      return {
+        ...d,
+        dateLabel: baseLabel, // Gunakan label unik ini untuk Sumbu X
+        H2: Number(d.h2 || 0),
+        CH4: Number(d.ch4 || 0),
+        C2H6: Number(d.c2h6 || 0),
+        C2H4: Number(d.c2h4 || 0),
+        C2H2: Number(d.c2h2 || 0),
+        CO: Number(d.co || 0),
+        CO2: Number(d.co2 || 0),
+        TDCG: d.tdcg
+          ? Number(d.tdcg)
+          : Number(d.h2) +
+            Number(d.ch4) +
+            Number(d.c2h6) +
+            Number(d.c2h4) +
+            Number(d.c2h2) +
+            Number(d.co),
+      };
+    });
   }, [chartHistory]);
 
   const [activeSeries, setActiveSeries] = useState({
@@ -403,6 +427,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
                     angle={-15}
                     textAnchor="end"
                     height={60}
+                    interval={0} // Memaksa semua label muncul (opsional, hati2 kalau data banyak)
                   />
                   <YAxis
                     stroke={isDarkMode ? "#94a3b8" : "#64748b"}
@@ -437,6 +462,7 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
                           stroke={gas.color}
                           fill={`url(#colorTDCG)`}
                           strokeWidth={2}
+                          isAnimationActive={false} // Matikan animasi agar tooltip lebih responsif
                         />
                       ) : (
                         <Line
@@ -445,8 +471,9 @@ const TrendingPage = ({ isDarkMode, userRole, userUnit, unitMapping = {} }) => {
                           dataKey={gas.key}
                           stroke={gas.color}
                           strokeWidth={gas.strokeWidth || 2}
-                          dot={false}
+                          dot={{ r: 3 }} // Titik kecil agar terlihat saat hover
                           strokeDasharray={gas.dash}
+                          isAnimationActive={false}
                         />
                       )),
                   )}

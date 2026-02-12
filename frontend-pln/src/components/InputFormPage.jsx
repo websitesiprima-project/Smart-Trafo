@@ -11,6 +11,15 @@ import {
 import DuvalPentagon from "./DuvalPentagon";
 import { supabase } from "../lib/supabaseClient";
 
+// --- FUNGSI PEMBERSIH TEKS (Utility) ---
+const cleanMarkdown = (text) => {
+  if (!text) return "";
+  return text
+    .replace(/[#*]/g, "") // Hapus karakter # dan *
+    .replace(/\n\s*\n/g, "\n") // Hapus baris kosong berlebih
+    .trim();
+};
+
 const InputFormPage = ({
   formData,
   handleChange,
@@ -28,14 +37,9 @@ const InputFormPage = ({
 
   const isSuperAdmin = userRole === "super_admin";
 
-  // --- 1. LOGIKA PENCARIAN GI (DIPERBAIKI LAGI) ---
+  // --- 1. LOGIKA PENCARIAN GI ---
   useEffect(() => {
     let availableGIs = [];
-
-    // Debugging: Cek data yang masuk
-    console.log("🛠️ Input Form Debug:");
-    console.log(" - User Unit:", userUnit);
-    console.log(" - Mapping Keys:", Object.keys(unitMapping));
 
     if (!unitMapping || Object.keys(unitMapping).length === 0) return;
 
@@ -43,7 +47,6 @@ const InputFormPage = ({
       // Super Admin: Ambil Semua
       Object.values(unitMapping).forEach((giList) => {
         if (Array.isArray(giList)) {
-          // Support format baru (objek) atau lama (string)
           giList.forEach((gi) => {
             const name = typeof gi === "string" ? gi : gi.name;
             if (name) availableGIs.push(name);
@@ -51,20 +54,16 @@ const InputFormPage = ({
         }
       });
     } else {
-      // Admin Unit: Cari yang cocok (Sangat Longgar)
+      // Admin Unit: Cari yang cocok
       const targetUnit = (userUnit || "")
         .toLowerCase()
         .replace(/ultg/g, "")
-        .trim(); // Hapus 'ultg', trim spasi
+        .trim();
 
       const foundKey = Object.keys(unitMapping).find((key) => {
         const cleanKey = key.toLowerCase().replace(/ultg/g, "").trim();
-        // Cek apakah target ada di key, atau key ada di target
         return cleanKey.includes(targetUnit) || targetUnit.includes(cleanKey);
       });
-
-      console.log(` - Target Bersih: "${targetUnit}"`);
-      console.log(` - Key Ketemu: "${foundKey}"`);
 
       const unitGis = foundKey ? unitMapping[foundKey] : [];
 
@@ -78,7 +77,7 @@ const InputFormPage = ({
     setDynamicGIs(availableGIs.sort());
   }, [unitMapping, userRole, userUnit, isSuperAdmin]);
 
-  // --- 2. FETCH TRAFOS (TETAP SAMA) ---
+  // --- 2. FETCH TRAFOS ---
   useEffect(() => {
     const fetchTrafos = async () => {
       if (formData.lokasi_gi) {
@@ -95,7 +94,7 @@ const InputFormPage = ({
     fetchTrafos();
   }, [formData.lokasi_gi]);
 
-  // --- 3. AUTOFILL (TETAP SAMA) ---
+  // --- 3. AUTOFILL ---
   useEffect(() => {
     if (typeof setFormData !== "function") return;
     if (formData.lokasi_gi && formData.nama_trafo) {
@@ -493,6 +492,8 @@ const InputFormPage = ({
                   </div>
                 </div>
               </div>
+
+              {/* KOLOM ANALISIS AI (VOLTY CHAT) */}
               <div
                 className={`rounded-2xl border p-6 relative overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-gradient-to-br from-white to-blue-50 border-blue-100 shadow-sm"}`}
               >
@@ -509,7 +510,7 @@ const InputFormPage = ({
                   className={`prose prose-sm max-w-none font-medium leading-relaxed whitespace-pre-line ${isDarkMode ? "prose-invert text-gray-300" : "text-gray-700"}`}
                 >
                   {result.volty_chat
-                    ? result.volty_chat
+                    ? cleanMarkdown(result.volty_chat) // <-- PENERAPAN CLEAN MARKDOWN
                     : "Tidak ada analisis tambahan."}
                 </div>
               </div>
