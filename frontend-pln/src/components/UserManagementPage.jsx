@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   XCircle,
   Mail,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../lib/supabaseClient";
@@ -35,6 +36,20 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Edit User Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [userToEdit, setUserToEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    email: "",
+    role: "",
+    unitName: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [showEditConfirmPassword, setShowEditConfirmPassword] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -196,6 +211,102 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
     }
   };
 
+  // Function to open edit user modal
+  const openEditModal = (user) => {
+    setUserToEdit(user);
+    setEditFormData({
+      email: user.email || "",
+      role: user.role || "admin_unit",
+      unitName: user.unit_ultg || "",
+      password: "",
+      confirmPassword: "",
+    });
+    setShowEditPassword(false);
+    setShowEditConfirmPassword(false);
+    setShowEditModal(true);
+  };
+
+  // Function to close edit modal
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setUserToEdit(null);
+    setEditFormData({
+      email: "",
+      role: "",
+      unitName: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setShowEditPassword(false);
+    setShowEditConfirmPassword(false);
+  };
+
+  // Function to handle edit user submit
+  const handleEditUser = async () => {
+    if (!userToEdit) return;
+
+    const requesterEmail = session?.user?.email;
+    if (!requesterEmail) {
+      toast.error("Sesi habis. Refresh halaman.");
+      return;
+    }
+
+    // Validasi email domain
+    if (editFormData.email && !editFormData.email.endsWith("@pln.co.id")) {
+      toast.error("Email harus menggunakan domain @pln.co.id!");
+      return;
+    }
+
+    // Validasi password jika diisi
+    if (editFormData.password) {
+      if (editFormData.password.length < 6) {
+        toast.error("Password minimal 6 karakter!");
+        return;
+      }
+      if (editFormData.password !== editFormData.confirmPassword) {
+        toast.error("Password dan Konfirmasi Password tidak cocok!");
+        return;
+      }
+    }
+
+    // Validasi unit untuk admin_unit
+    if (editFormData.role === "admin_unit" && !editFormData.unitName.trim()) {
+      toast.error("Nama Unit wajib diisi untuk Admin Unit!");
+      return;
+    }
+
+    setIsUpdating(true);
+    const toastId = toast.loading("Mengupdate data user...");
+
+    try {
+      const res = await fetch(`${API_URL}/admin/update-user`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_id: userToEdit.id,
+          new_email: editFormData.email !== userToEdit.email ? editFormData.email : "",
+          new_role: editFormData.role !== userToEdit.role ? editFormData.role : "",
+          new_unit_ultg: editFormData.role === "super_admin" 
+            ? "Kantor Induk" 
+            : (editFormData.unitName !== userToEdit.unit_ultg ? editFormData.unitName : ""),
+          new_password: editFormData.password || "",
+          requester_email: requesterEmail,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.status !== "Sukses") throw new Error(data.msg);
+
+      toast.success(data.msg || "User berhasil diupdate!", { id: toastId });
+      closeEditModal();
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.message, { id: toastId });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const currentUserEmail = session?.user?.email;
 
   return (
@@ -284,13 +395,22 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                     </td>
                     <td className="px-6 py-4 text-center">
                       {user.email !== currentUserEmail && (
-                        <button
-                          onClick={() => openDeleteModal(user)}
-                          className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition"
-                          title="Hapus User"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openEditModal(user)}
+                            className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition"
+                            title="Edit User"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(user)}
+                            className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition"
+                            title="Hapus User"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -622,6 +742,192 @@ export default function UserManagementPage({ session, isDarkMode = true }) {
                     <Trash2 size={18} />
                   )}
                   Hapus Permanen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT USER MODAL */}
+      {showEditModal && userToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl ${isDarkMode ? "bg-slate-800" : "bg-white"}`}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#1B7A8F] to-[#155e6e] p-6 text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Edit3 size={36} className="text-white" />
+              </div>
+              <h3 className="text-xl font-bold text-white">Edit Data User</h3>
+              <p className="text-white/70 text-sm mt-1">{userToEdit.email}</p>
+            </div>
+
+            {/* Form Content */}
+            <div className="p-6 space-y-5">
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-bold uppercase opacity-70 mb-1">
+                  Email Korporat
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 text-slate-500" size={18} />
+                  <input
+                    type="email"
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    className={`w-full pl-10 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-[#1B7A8F] ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                    placeholder="manager@pln.co.id"
+                  />
+                </div>
+                <p className="text-[11px] opacity-50 mt-1">⚠️ Hanya domain @pln.co.id</p>
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-xs font-bold uppercase opacity-70 mb-1">
+                  Role Akses
+                </label>
+                <select
+                  value={editFormData.role}
+                  onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value })}
+                  className={`w-full p-3 rounded-lg border outline-none focus:ring-2 focus:ring-[#1B7A8F] ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                >
+                  <option value="admin_unit">Admin Unit (Manager ULTG)</option>
+                  <option value="super_admin">Super Admin (Pusat)</option>
+                </select>
+              </div>
+
+              {/* Unit ULTG */}
+              <div>
+                <label className="block text-xs font-bold uppercase opacity-70 mb-1">
+                  Nama Unit ULTG
+                </label>
+                <div className="relative">
+                  <Box className="absolute left-3 top-3 text-slate-500" size={18} />
+                  <input
+                    type="text"
+                    value={editFormData.role === "super_admin" ? "Kantor Induk" : editFormData.unitName}
+                    onChange={(e) => setEditFormData({ ...editFormData, unitName: e.target.value })}
+                    disabled={editFormData.role === "super_admin"}
+                    className={`w-full pl-10 p-3 rounded-lg border outline-none font-bold ${
+                      editFormData.role === "super_admin"
+                        ? "opacity-50 cursor-not-allowed"
+                        : "focus:ring-2 focus:ring-[#1B7A8F]"
+                    } ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                    placeholder="Contoh: Lopana"
+                  />
+                </div>
+                {/* Warning jika nama ULTG berubah */}
+                {editFormData.role !== "super_admin" && editFormData.unitName && userToEdit?.unit_ultg && editFormData.unitName !== userToEdit.unit_ultg && (
+                  <div className={`mt-2 p-2 rounded-lg text-xs flex items-start gap-2 ${isDarkMode ? "bg-amber-500/10 text-amber-300" : "bg-amber-50 text-amber-700"}`}>
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>
+                      Mengubah nama ULTG akan otomatis memperbarui: <b>Manajemen Unit</b>, <b>Kelola Aset</b>, dan <b>semua user</b> dengan ULTG "{userToEdit.unit_ultg}".
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Divider */}
+              <div className={`border-t ${isDarkMode ? "border-slate-700" : "border-slate-200"} pt-4`}>
+                <p className={`text-xs font-semibold mb-3 flex items-center gap-2 ${isDarkMode ? "text-amber-400" : "text-amber-600"}`}>
+                  <Lock size={14} /> Ganti Password (Opsional)
+                </p>
+                
+                {/* New Password */}
+                <div className="mb-4">
+                  <label className="block text-xs font-bold uppercase opacity-70 mb-1">
+                    Password Baru
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
+                    <input
+                      type={showEditPassword ? "text" : "password"}
+                      value={editFormData.password}
+                      onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                      minLength={6}
+                      className={`w-full pl-10 pr-10 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-[#1B7A8F] ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                      placeholder="Kosongkan jika tidak ingin diubah"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditPassword(!showEditPassword)}
+                      className="absolute right-3 top-3 text-slate-500 hover:text-slate-700 transition"
+                    >
+                      {showEditPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  {editFormData.password && editFormData.password.length < 6 && (
+                    <p className="text-[11px] text-red-500 mt-1">⚠️ Minimal 6 karakter</p>
+                  )}
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-xs font-bold uppercase opacity-70 mb-1">
+                    Konfirmasi Password Baru
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
+                    <input
+                      type={showEditConfirmPassword ? "text" : "password"}
+                      value={editFormData.confirmPassword}
+                      onChange={(e) => setEditFormData({ ...editFormData, confirmPassword: e.target.value })}
+                      minLength={6}
+                      disabled={!editFormData.password}
+                      className={`w-full pl-10 pr-10 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-[#1B7A8F] ${
+                        !editFormData.password ? "opacity-50 cursor-not-allowed" : ""
+                      } ${isDarkMode ? "bg-slate-900 border-slate-600" : "bg-slate-50 border-gray-200"}`}
+                      placeholder="Ulangi password baru"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowEditConfirmPassword(!showEditConfirmPassword)}
+                      disabled={!editFormData.password}
+                      className="absolute right-3 top-3 text-slate-500 hover:text-slate-700 transition disabled:opacity-50"
+                    >
+                      {showEditConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  {editFormData.password && editFormData.confirmPassword && editFormData.password !== editFormData.confirmPassword && (
+                    <p className="text-[11px] text-red-500 mt-1 flex items-center gap-1">
+                      <XCircle size={12} /> Password tidak cocok
+                    </p>
+                  )}
+                  {editFormData.password && editFormData.confirmPassword && editFormData.password === editFormData.confirmPassword && (
+                    <p className="text-[11px] text-green-500 mt-1">✓ Password cocok</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  disabled={isUpdating}
+                  className={`flex-1 py-3 rounded-xl font-bold transition ${isDarkMode ? "bg-slate-700 hover:bg-slate-600" : "bg-slate-200 hover:bg-slate-300"}`}
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEditUser}
+                  disabled={isUpdating || (editFormData.password && editFormData.password !== editFormData.confirmPassword)}
+                  className={`flex-1 py-3 rounded-xl font-bold text-white transition flex justify-center items-center gap-2 ${
+                    isUpdating || (editFormData.password && editFormData.password !== editFormData.confirmPassword)
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-[#1B7A8F] to-[#155e6e] hover:shadow-lg hover:shadow-[#1B7A8F]/30"
+                  }`}
+                >
+                  {isUpdating ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : (
+                    <Save size={18} />
+                  )}
+                  Simpan Perubahan
                 </button>
               </div>
             </div>

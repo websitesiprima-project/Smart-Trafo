@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const useAutoLogout = (logoutAction, timeout = 90000) => {
+const useAutoLogout = (logoutAction, timeout = 6000) => {
   const timerRef = useRef(null);
   const actionRef = useRef(logoutAction);
 

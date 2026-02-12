@@ -9,6 +9,7 @@ import {
   Globe,
   Database,
   AlertTriangle,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,6 +28,24 @@ export default function UnitManagementPage({
 
   // State untuk modal delete GI
   const [deleteGiModal, setDeleteGiModal] = useState({ show: false, gi: null, ultg: null });
+
+  // State untuk modal edit GI
+  const [editGiModal, setEditGiModal] = useState({ 
+    show: false, 
+    oldGi: null, 
+    oldUltg: null,
+    newName: "",
+    newUltg: "",
+    lat: "",
+    lon: ""
+  });
+
+  // State untuk modal edit ULTG
+  const [editUltgModal, setEditUltgModal] = useState({
+    show: false,
+    oldName: "",
+    newName: ""
+  });
 
   const fetchHierarchy = async () => {
     setLoading(true);
@@ -126,6 +145,118 @@ export default function UnitManagementPage({
     } catch (e) {
       toast.error("Gagal hapus GI", { id: toastId });
     }
+  };
+
+  // --- Fungsi Edit GI ---
+  const handleEditGi = (gi, ultgName) => {
+    setEditGiModal({
+      show: true,
+      oldGi: gi.name,
+      oldUltg: ultgName,
+      newName: gi.name,
+      newUltg: ultgName,
+      lat: gi.lat?.toString() || "0",
+      lon: gi.lon?.toString() || "0"
+    });
+  };
+
+  const confirmEditGi = async () => {
+    const { oldGi, oldUltg, newName, newUltg, lat, lon } = editGiModal;
+    
+    if (!newName.trim() || !newUltg) {
+      return toast.error("Nama GI dan ULTG harus diisi");
+    }
+    
+    setEditGiModal({ ...editGiModal, show: false });
+    
+    const toastId = toast.loading("Mengupdate GI...");
+    try {
+      const res = await fetch(`${API_URL}/admin/master/update-gi`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          old_nama_gi: oldGi,
+          old_nama_ultg: oldUltg,
+          new_nama_gi: newName.trim(),
+          new_nama_ultg: newUltg,
+          lat: parseFloat(lat) || 0,
+          lon: parseFloat(lon) || 0,
+          requester_email: session.user.email
+        }),
+      });
+
+      const data = await res.json();
+      if (data.status === "Sukses") {
+        toast.success(data.msg, { id: toastId });
+        fetchHierarchy();
+      } else {
+        toast.error(data.msg, { id: toastId });
+      }
+    } catch (e) {
+      toast.error("Gagal mengupdate GI", { id: toastId });
+    }
+    
+    // Reset modal state
+    setEditGiModal({ 
+      show: false, 
+      oldGi: null, 
+      oldUltg: null,
+      newName: "",
+      newUltg: "",
+      lat: "",
+      lon: ""
+    });
+  };
+
+  // Handler untuk membuka modal edit ULTG
+  const handleEditUltg = (ultgName) => {
+    setEditUltgModal({
+      show: true,
+      oldName: ultgName,
+      newName: ultgName
+    });
+  };
+
+  // Handler untuk konfirmasi edit ULTG
+  const confirmEditUltg = async () => {
+    const { oldName, newName } = editUltgModal;
+    
+    if (!newName.trim()) {
+      return toast.error("Nama ULTG tidak boleh kosong");
+    }
+    
+    if (oldName === newName.trim()) {
+      setEditUltgModal({ show: false, oldName: "", newName: "" });
+      return toast.info("Tidak ada perubahan nama ULTG");
+    }
+    
+    setEditUltgModal({ ...editUltgModal, show: false });
+    
+    const toastId = toast.loading("Mengupdate ULTG...");
+    try {
+      const res = await fetch(`${API_URL}/admin/master/update-ultg`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          old_nama_ultg: oldName,
+          new_nama_ultg: newName.trim(),
+          requester_email: session.user.email
+        }),
+      });
+
+      const data = await res.json();
+      if (data.status === "Sukses") {
+        toast.success(data.msg, { id: toastId });
+        fetchHierarchy();
+      } else {
+        toast.error(data.msg, { id: toastId });
+      }
+    } catch (e) {
+      toast.error("Gagal mengupdate ULTG", { id: toastId });
+    }
+    
+    // Reset modal state
+    setEditUltgModal({ show: false, oldName: "", newName: "" });
   };
 
   return (
@@ -271,10 +402,17 @@ export default function UnitManagementPage({
               key={ultg}
               className={`rounded-xl border overflow-hidden ${isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}
             >
-              <div className="p-4 bg-[#1B7A8F]/10 flex justify-between items-center border-b border-gray-500/10">
+              <div className="p-4 bg-[#1B7A8F]/10 flex justify-between items-center border-b border-gray-500/10 group">
                 <h4 className="font-bold text-lg text-[#1B7A8F] flex items-center gap-2">
                   <Map size={18} /> {`ULTG ${ultg}`}
                 </h4>
+                <button
+                  onClick={() => handleEditUltg(ultg)}
+                  className="opacity-0 group-hover:opacity-100 text-blue-500 p-2 hover:bg-blue-500/10 rounded transition"
+                  title="Edit ULTG"
+                >
+                  <Edit3 size={16} />
+                </button>
               </div>
 
               <div className="p-2 max-h-60 overflow-y-auto custom-scrollbar">
@@ -304,12 +442,22 @@ export default function UnitManagementPage({
                             </span>
                           )}
                         </div>
-                        <button
-                          onClick={() => handleDeleteGi(gi.name, ultg)}
-                          className="opacity-0 group-hover:opacity-100 text-red-400 p-2 hover:bg-red-500/10 rounded transition"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleEditGi(gi, ultg)}
+                            className="opacity-0 group-hover:opacity-100 text-blue-400 p-2 hover:bg-blue-500/10 rounded transition"
+                            title="Edit GI"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGi(gi.name, ultg)}
+                            className="opacity-0 group-hover:opacity-100 text-red-400 p-2 hover:bg-red-500/10 rounded transition"
+                            title="Hapus GI"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -401,6 +549,212 @@ export default function UnitManagementPage({
                 className="flex-1 px-4 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg shadow-red-500/30 hover:shadow-red-500/50"
               >
                 Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit GI */}
+      {editGiModal.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setEditGiModal({ show: false, oldGi: null, oldUltg: null, newName: "", newUltg: "", lat: "", lon: "" })}
+          />
+          
+          {/* Modal Content */}
+          <div className={`relative w-full max-w-md ${isDarkMode ? 'bg-slate-800' : 'bg-white'} rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300`}>
+            {/* Icon Header */}
+            <div className="flex flex-col items-center pt-8 pb-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full animate-pulse" />
+                <div className="relative bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-full">
+                  <Edit3 size={40} className="text-white" />
+                </div>
+              </div>
+              <h3 className={`mt-6 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                Edit Gardu Induk
+              </h3>
+              <p className={`mt-2 text-center text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Ubah informasi GI dan lokasi
+              </p>
+            </div>
+
+            {/* Edit Form Content */}
+            <div className="px-8 pb-6 space-y-4">
+              {/* Nama GI */}
+              <div>
+                <label className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Nama Gardu Induk
+                </label>
+                <input
+                  type="text"
+                  value={editGiModal.newName}
+                  onChange={(e) => setEditGiModal({ ...editGiModal, newName: e.target.value })}
+                  placeholder="Contoh: GI Teling"
+                  className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-slate-200'}`}
+                />
+              </div>
+
+              {/* Pilih ULTG */}
+              <div>
+                <label className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Unit ULTG
+                </label>
+                <select
+                  value={editGiModal.newUltg}
+                  onChange={(e) => setEditGiModal({ ...editGiModal, newUltg: e.target.value })}
+                  className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-slate-200'}`}
+                >
+                  <option value="">-- Pilih ULTG --</option>
+                  {Object.keys(hierarchy).map((ultg) => (
+                    <option key={ultg} value={ultg}>
+                      {`ULTG ${ultg}`}
+                    </option>
+                  ))}
+                </select>
+                {editGiModal.oldUltg !== editGiModal.newUltg && editGiModal.newUltg && (
+                  <p className="text-xs text-amber-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle size={12} /> GI akan dipindahkan ke ULTG {editGiModal.newUltg}
+                  </p>
+                )}
+              </div>
+
+              {/* Koordinat */}
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editGiModal.lat}
+                    onChange={(e) => setEditGiModal({ ...editGiModal, lat: e.target.value })}
+                    placeholder="1.45..."
+                    className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-slate-200'}`}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editGiModal.lon}
+                    onChange={(e) => setEditGiModal({ ...editGiModal, lon: e.target.value })}
+                    placeholder="124.8..."
+                    className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-slate-200'}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 px-8 pb-8">
+              <button
+                onClick={() => setEditGiModal({ show: false, oldGi: null, oldUltg: null, newName: "", newUltg: "", lat: "", lon: "" })}
+                className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                  isDarkMode 
+                    ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmEditGi}
+                className="flex-1 px-4 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-[#1B7A8F] to-[#155e6e] hover:from-[#155e6e] hover:to-[#0f4a57] transition-all duration-200 shadow-lg shadow-[#1B7A8F]/30 hover:shadow-[#1B7A8F]/50"
+              >
+                Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit ULTG */}
+      {editUltgModal.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setEditUltgModal({ show: false, oldName: "", newName: "" })}
+          />
+          
+          {/* Modal Content */}
+          <div className={`relative w-full max-w-md ${isDarkMode ? 'bg-slate-800' : 'bg-white'} rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 duration-300`}>
+            {/* Icon Header */}
+            <div className="flex flex-col items-center pt-8 pb-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full animate-pulse" />
+                <div className="relative bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-full">
+                  <Edit3 size={40} className="text-white" />
+                </div>
+              </div>
+              <h3 className={`mt-6 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                Edit ULTG
+              </h3>
+              <p className={`mt-2 text-center text-sm ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                Ubah nama ULTG (akan memperbarui semua referensi)
+              </p>
+            </div>
+
+            {/* Edit Form Content */}
+            <div className="px-8 pb-6 space-y-4">
+              {/* Info Box */}
+              <div className={`p-3 rounded-lg border text-xs ${isDarkMode ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>Perubahan nama ULTG akan otomatis mengupdate data pengguna dan referensi terkait.</span>
+                </div>
+              </div>
+
+              {/* Nama ULTG */}
+              <div>
+                <label className={`text-xs font-bold uppercase ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Nama ULTG
+                </label>
+                <input
+                  type="text"
+                  value={editUltgModal.newName}
+                  onChange={(e) => setEditUltgModal({ ...editUltgModal, newName: e.target.value })}
+                  placeholder="Contoh: Lopana"
+                  className={`w-full p-3 rounded-lg border outline-none mt-1 ${isDarkMode ? 'bg-slate-900 border-slate-600 text-white' : 'bg-gray-50 border-slate-200'}`}
+                />
+                {editUltgModal.oldName !== editUltgModal.newName && editUltgModal.newName && (
+                  <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+                    <ChevronRight size={12} /> ULTG akan diubah dari "{editUltgModal.oldName}" menjadi "{editUltgModal.newName}"
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 px-8 pb-8">
+              <button
+                onClick={() => setEditUltgModal({ show: false, oldName: "", newName: "" })}
+                className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                  isDarkMode 
+                    ? 'bg-slate-700 hover:bg-slate-600 text-slate-200' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                Batal
+              </button>
+              <button
+                onClick={confirmEditUltg}
+                disabled={!editUltgModal.newName.trim() || editUltgModal.oldName === editUltgModal.newName.trim()}
+                className={`flex-1 px-4 py-3 rounded-xl font-medium text-white transition-all duration-200 ${
+                  !editUltgModal.newName.trim() || editUltgModal.oldName === editUltgModal.newName.trim()
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-[#1B7A8F] to-[#155e6e] hover:from-[#155e6e] hover:to-[#0f4a57] shadow-lg shadow-[#1B7A8F]/30 hover:shadow-[#1B7A8F]/50'
+                }`}
+              >
+                Simpan Perubahan
               </button>
             </div>
           </div>

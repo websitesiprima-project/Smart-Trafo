@@ -401,7 +401,7 @@ const LandingPage = ({ onStart, onGuide, isDarkMode, toggleTheme }) => {
             <h4 className="font-bold text-white mb-3 sm:mb-4 text-sm sm:text-base">Kontak</h4>
             <ul className="space-y-2 text-xs sm:text-sm text-slate-400">
               <li>PT. PLN (PERSERO) UPT MANADO</li>
-              <li>Jl. Bethesda No. 32, Manado</li>
+              <li>Jl. Tompakwa No.1, Bumi Nyiur, Kec. Wanea, Kota Manado</li>
               <li>Sulawesi Utara</li>
             </ul>
           </div>

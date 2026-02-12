@@ -148,6 +148,28 @@ class MasterGiInput(BaseModel):
     lon: float = 0.0 
     requester_email: str
 
+class UpdateGiInput(BaseModel):
+    old_nama_gi: str
+    old_nama_ultg: str
+    new_nama_gi: str
+    new_nama_ultg: str
+    lat: float = 0.0
+    lon: float = 0.0
+    requester_email: str
+
+class UpdateUserRequest(BaseModel):
+    target_id: str
+    new_email: str = ""  # Opsional, jika kosong tidak diupdate
+    new_role: str = ""  # Opsional
+    new_unit_ultg: str = ""  # Opsional
+    new_password: str = ""  # Opsional, jika kosong tidak diupdate
+    requester_email: str
+
+class UpdateUltgInput(BaseModel):
+    old_nama_ultg: str
+    new_nama_ultg: str
+    requester_email: str
+
 # ==========================================
 # 6. METODE ANALISIS TEKNIS
 # ==========================================
@@ -824,10 +846,39 @@ def admin_delete_user(target_id: str, requester_email: str, unit_ultg: str = "")
         if requester_profile.get("role") != 'super_admin':
             return {"status": "Gagal", "msg": "Unauthorized: Bukan Super Admin"}
 
-        # 3. Hapus ULTG terkait (akan cascade delete semua GI)
+        # 3. Hapus ULTG terkait (akan cascade delete semua GI, aset trafo, dan riwayat uji)
         ultg_deleted = False
+        gi_deleted_count = 0
+        asset_deleted_count = 0
         if unit_ultg and unit_ultg.strip() and unit_ultg != "Kantor Induk":
             try:
+                # 3.1 Ambil semua GI di bawah ULTG ini
+                ultg_check = public_client.table("master_ultg").select("id").eq("nama_ultg", unit_ultg).execute()
+                if ultg_check.data and len(ultg_check.data) > 0:
+                    ultg_id = ultg_check.data[0].get('id')
+                    
+                    # 3.2 Dapatkan semua nama GI
+                    gi_res = public_client.table("master_gi").select("nama_gi").eq("id_ultg", ultg_id).execute()
+                    gi_list = [g.get('nama_gi') for g in gi_res.data] if gi_res.data else []
+                    gi_deleted_count = len(gi_list)
+                    
+                    # 3.3 Hapus semua aset trafo dan riwayat uji untuk setiap GI
+                    for gi_name in gi_list:
+                        try:
+                            # Hapus assets_trafo
+                            admin_client.table("assets_trafo").delete().eq("lokasi_gi", gi_name).execute()
+                            print(f"✅ Deleted assets_trafo for GI: {gi_name}")
+                        except Exception as e:
+                            print(f"⚠️ assets_trafo delete for {gi_name}: {e}")
+                        
+                        try:
+                            # Hapus riwayat_uji
+                            admin_client.table("riwayat_uji").delete().eq("lokasi_gi", gi_name).execute()
+                            print(f"✅ Deleted riwayat_uji for GI: {gi_name}")
+                        except Exception as e:
+                            print(f"⚠️ riwayat_uji delete for {gi_name}: {e}")
+                
+                # 3.4 Hapus ULTG (GI akan ikut terhapus jika ada foreign key cascade)
                 admin_client.table("master_ultg").delete().eq("nama_ultg", unit_ultg).execute()
                 ultg_deleted = True
                 print(f"✅ ULTG '{unit_ultg}' dan semua GI-nya berhasil dihapus")
@@ -846,7 +897,7 @@ def admin_delete_user(target_id: str, requester_email: str, unit_ultg: str = "")
         # 6. Audit Log
         details = f"Menghapus User ID: {target_id}"
         if ultg_deleted:
-            details += f" beserta ULTG '{unit_ultg}' dan seluruh GI-nya"
+            details += f" beserta ULTG '{unit_ultg}', {gi_deleted_count} GI, dan semua aset/riwayat terkait"
         
         admin_client.table("audit_logs").insert({
             "user_email": requester_email,
@@ -856,10 +907,123 @@ def admin_delete_user(target_id: str, requester_email: str, unit_ultg: str = "")
 
         msg = "User berhasil dihapus permanent."
         if ultg_deleted:
-            msg = f"User beserta ULTG '{unit_ultg}' dan seluruh GI-nya berhasil dihapus."
+            msg = f"User beserta ULTG '{unit_ultg}', {gi_deleted_count} GI, dan semua aset trafo terkait berhasil dihapus."
         
         return {"status": "Sukses", "msg": msg}
     except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+@app.put("/admin/update-user")
+def admin_update_user(data: UpdateUserRequest):
+    """Update data user (email, role, unit_ultg, password) dengan cascade"""
+    admin_client = supabase_admin
+    if admin_client is None: 
+        return {"status": "Error", "msg": "Service Key Missing"}
+    
+    public_client = supabase
+    if public_client is None:
+        return {"status": "Error", "msg": "Public DB Connection Error"}
+    
+    try:
+        # 1. Cek Super Admin
+        check = public_client.table("profiles")\
+            .select("role")\
+            .eq("email", data.requester_email)\
+            .execute()
+            
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        requester_profile = cast(Dict[str, Any], rows[0])
+            
+        if requester_profile.get("role") != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized: Hanya Super Admin"}
+
+        # 2. Ambil data user lama untuk cascade
+        old_user = public_client.table("profiles").select("email, unit_ultg").eq("id", data.target_id).execute()
+        if not old_user.data or len(old_user.data) == 0:
+            return {"status": "Gagal", "msg": "User tidak ditemukan"}
+        
+        old_email = old_user.data[0].get("email", "")
+        old_unit_ultg = old_user.data[0].get("unit_ultg", "")
+
+        # 3. Update profile di tabel profiles
+        profile_updates: Dict[str, Any] = {}
+        if data.new_email and data.new_email.strip():
+            profile_updates["email"] = data.new_email.strip()
+        if data.new_role and data.new_role.strip():
+            profile_updates["role"] = data.new_role.strip()
+        if data.new_unit_ultg and data.new_unit_ultg.strip():
+            profile_updates["unit_ultg"] = data.new_unit_ultg.strip()
+        
+        if profile_updates:
+            admin_client.table("profiles").update(profile_updates).eq("id", data.target_id).execute()
+
+        # 3.5 Cascade: Jika unit_ultg berubah, update master_ultg dan semua referensi terkait
+        if data.new_unit_ultg and data.new_unit_ultg.strip() and old_unit_ultg and data.new_unit_ultg.strip() != old_unit_ultg and old_unit_ultg != "Kantor Induk":
+            new_ultg_name = data.new_unit_ultg.strip()
+            
+            # Update master_ultg
+            try:
+                admin_client.table("master_ultg").update({"nama_ultg": new_ultg_name}).eq("nama_ultg", old_unit_ultg).execute()
+                print(f"✅ Cascade: master_ultg nama updated from {old_unit_ultg} to {new_ultg_name}")
+            except Exception as e:
+                print(f"⚠️ Cascade master_ultg: {e}")
+            
+            # Update profiles.unit_ultg untuk semua user dengan ULTG lama (selain user yang sedang diedit)
+            try:
+                admin_client.table("profiles").update({"unit_ultg": new_ultg_name}).eq("unit_ultg", old_unit_ultg).execute()
+                print(f"✅ Cascade: profiles.unit_ultg updated from {old_unit_ultg} to {new_ultg_name}")
+            except Exception as e:
+                print(f"⚠️ Cascade profiles.unit_ultg: {e}")
+
+        # 4. Cascade: Jika email berubah, update referensi di tabel lain
+        if data.new_email and data.new_email.strip() and old_email and data.new_email.strip() != old_email:
+            # Update audit_logs
+            try:
+                admin_client.table("audit_logs").update({"user_email": data.new_email.strip()}).eq("user_email", old_email).execute()
+                print(f"✅ Cascade: audit_logs user_email updated from {old_email} to {data.new_email}")
+            except Exception as e:
+                print(f"⚠️ Cascade audit_logs: {e}")
+            
+            # Update riwayat_uji jika ada kolom user_email
+            try:
+                admin_client.table("riwayat_uji").update({"user_email": data.new_email.strip()}).eq("user_email", old_email).execute()
+                print(f"✅ Cascade: riwayat_uji user_email updated")
+            except Exception as e:
+                print(f"⚠️ Cascade riwayat_uji (mungkin tidak ada kolom user_email): {e}")
+
+        # 5. Update Auth jika ada perubahan email atau password
+        auth_updates: Dict[str, Any] = {}
+        if data.new_email and data.new_email.strip():
+            auth_updates["email"] = data.new_email.strip()
+        if data.new_password and data.new_password.strip():
+            auth_updates["password"] = data.new_password.strip()
+        
+        if auth_updates:
+            admin_client.auth.admin.update_user_by_id(data.target_id, attributes=cast(Any, auth_updates))
+
+        # 6. Audit Log
+        changes = []
+        if data.new_email and data.new_email.strip():
+            changes.append(f"email: {old_email} -> {data.new_email}")
+        if data.new_role and data.new_role.strip():
+            changes.append(f"role -> {data.new_role}")
+        if data.new_unit_ultg and data.new_unit_ultg.strip():
+            changes.append(f"unit: {old_unit_ultg} -> {data.new_unit_ultg}")
+        if data.new_password and data.new_password.strip():
+            changes.append("password diubah")
+        
+        admin_client.table("audit_logs").insert({
+            "user_email": data.requester_email,
+            "action": "UPDATE_USER",
+            "details": f"Update User ID: {data.target_id} - {', '.join(changes)}"
+        }).execute()
+
+        return {"status": "Sukses", "msg": "User berhasil diupdate!"}
+    except Exception as e:
+        print(f"Error Update User: {str(e)}")
         return {"status": "Error", "msg": str(e)}
     
 # ==========================================
@@ -977,6 +1141,62 @@ def delete_master_ultg(nama_ultg: str, requester_email: str):
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
 
+# --- C2. UPDATE ULTG ---
+@app.put("/admin/master/update-ultg")
+def update_master_ultg(data: UpdateUltgInput):
+    """Update nama ULTG dengan cascade ke profiles dan tabel terkait"""
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        # 1. Cek Super Admin
+        check = public_client.table("profiles").select("role").eq("email", data.requester_email).execute()
+        
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+            
+        user_data = cast(Dict[str, Any], rows[0])
+        if user_data.get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized: Hanya Super Admin"}
+
+        # 2. Cek apakah ULTG lama ada
+        ultg_check = public_client.table("master_ultg").select("id").eq("nama_ultg", data.old_nama_ultg).execute()
+        if not ultg_check.data or len(ultg_check.data) == 0:
+            return {"status": "Gagal", "msg": f"ULTG '{data.old_nama_ultg}' tidak ditemukan"}
+
+        # 3. Cek apakah nama baru sudah dipakai (jika berbeda)
+        if data.old_nama_ultg != data.new_nama_ultg:
+            existing = public_client.table("master_ultg").select("id").eq("nama_ultg", data.new_nama_ultg).execute()
+            if existing.data and len(existing.data) > 0:
+                return {"status": "Gagal", "msg": f"Nama ULTG '{data.new_nama_ultg}' sudah digunakan"}
+
+        # 4. Update nama ULTG di master_ultg
+        admin_client.table("master_ultg").update({"nama_ultg": data.new_nama_ultg}).eq("nama_ultg", data.old_nama_ultg).execute()
+        print(f"✅ ULTG name updated: {data.old_nama_ultg} -> {data.new_nama_ultg}")
+
+        # 5. Cascade: Update profiles.unit_ultg untuk semua user dengan ULTG lama
+        try:
+            admin_client.table("profiles").update({"unit_ultg": data.new_nama_ultg}).eq("unit_ultg", data.old_nama_ultg).execute()
+            print(f"✅ Cascade: profiles.unit_ultg updated from {data.old_nama_ultg} to {data.new_nama_ultg}")
+        except Exception as e:
+            print(f"⚠️ Cascade profiles: {e}")
+
+        # 6. Audit Log
+        admin_client.table("audit_logs").insert({
+            "user_email": data.requester_email,
+            "action": "UPDATE_ULTG",
+            "details": f"Rename ULTG: {data.old_nama_ultg} -> {data.new_nama_ultg}"
+        }).execute()
+
+        return {"status": "Sukses", "msg": f"ULTG berhasil diubah dari '{data.old_nama_ultg}' menjadi '{data.new_nama_ultg}'"}
+    except Exception as e:
+        print(f"Error Update ULTG: {str(e)}")
+        return {"status": "Error", "msg": str(e)}
+
 # --- D. ADD GI ---
 @app.post("/admin/master/add-gi")
 def add_master_gi(data: MasterGiInput):
@@ -1019,7 +1239,74 @@ def add_master_gi(data: MasterGiInput):
     except Exception as e:
         return {"status": "Error", "msg": str(e)}
 
-# --- E. DELETE GI ---
+# --- E. UPDATE GI ---
+@app.put("/admin/master/update-gi")
+def update_master_gi(data: UpdateGiInput):
+    admin_client = supabase_admin
+    if admin_client is None: return {"status": "Error", "msg": "Admin access required"}
+    
+    public_client = supabase
+    if public_client is None: return {"status": "Error", "msg": "DB Error"}
+
+    try:
+        # Validasi user adalah super_admin
+        check = public_client.table("profiles").select("role").eq("email", data.requester_email).execute()
+        rows = check.data
+        if not isinstance(rows, list) or len(rows) == 0:
+            return {"status": "Gagal", "msg": "Unauthorized"}
+        
+        user_data = cast(Dict[str, Any], rows[0])
+        if user_data.get('role') != 'super_admin':
+            return {"status": "Gagal", "msg": "Unauthorized"}
+
+        # Cari ID ULTG lama
+        old_ultg_res = public_client.table("master_ultg").select("id").eq("nama_ultg", data.old_nama_ultg).execute()
+        old_ultg_rows = old_ultg_res.data
+        if not isinstance(old_ultg_rows, list) or len(old_ultg_rows) == 0:
+            return {"status": "Gagal", "msg": "ULTG lama tidak ditemukan"}
+        
+        old_ultg_row = cast(Dict[str, Any], old_ultg_rows[0])
+        old_ultg_id = old_ultg_row.get('id')
+
+        # Cari ID ULTG baru
+        new_ultg_res = public_client.table("master_ultg").select("id").eq("nama_ultg", data.new_nama_ultg).execute()
+        new_ultg_rows = new_ultg_res.data
+        if not isinstance(new_ultg_rows, list) or len(new_ultg_rows) == 0:
+            return {"status": "Gagal", "msg": "ULTG baru tidak ditemukan"}
+        
+        new_ultg_row = cast(Dict[str, Any], new_ultg_rows[0])
+        new_ultg_id = new_ultg_row.get('id')
+
+        # Update GI di master_gi
+        admin_client.table("master_gi").update({
+            "nama_gi": data.new_nama_gi,
+            "id_ultg": new_ultg_id,
+            "lat": data.lat,
+            "lon": data.lon
+        }).match({"nama_gi": data.old_nama_gi, "id_ultg": old_ultg_id}).execute()
+
+        # Update lokasi_gi di assets_trafo jika nama berubah
+        if data.old_nama_gi != data.new_nama_gi:
+            try:
+                admin_client.table("assets_trafo").update({
+                    "lokasi_gi": data.new_nama_gi
+                }).eq("lokasi_gi", data.old_nama_gi).execute()
+            except Exception as asset_err:
+                print(f"Warning: Gagal update aset untuk GI {data.old_nama_gi}: {asset_err}")
+            
+            # Update lokasi_gi di riwayat_uji jika nama berubah
+            try:
+                admin_client.table("riwayat_uji").update({
+                    "lokasi_gi": data.new_nama_gi
+                }).eq("lokasi_gi", data.old_nama_gi).execute()
+            except Exception as riwayat_err:
+                print(f"Warning: Gagal update riwayat untuk GI {data.old_nama_gi}: {riwayat_err}")
+        
+        return {"status": "Sukses", "msg": f"GI berhasil diupdate ke {data.new_nama_gi}"}
+    except Exception as e:
+        return {"status": "Error", "msg": str(e)}
+
+# --- F. DELETE GI ---
 @app.delete("/admin/master/delete-gi")
 def delete_master_gi(nama_gi: str, nama_ultg: str, requester_email: str):
     admin_client = supabase_admin
