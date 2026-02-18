@@ -179,11 +179,9 @@ export default function Home() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       handleSession(session);
-      // Redirect ke dashboard saat user baru login
-      if (event === "SIGNED_IN" && session) {
-        setActivePage("dashboard");
-        localStorage.setItem("pln-smart-trafo-activepage", "dashboard");
-      }
+      // Hanya redirect ke dashboard saat SIGNED_OUT (untuk reset state)
+      // Redirect saat login sudah ditangani oleh onLoginSuccess di LoginPage
+      // JANGAN redirect di sini karena SIGNED_IN juga terpicu saat ganti tab / token refresh
     });
 
     const safetyTimer = setTimeout(() => {

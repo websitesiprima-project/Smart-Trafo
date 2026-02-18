@@ -78,6 +78,56 @@ const HistoryPage = ({
 
   const isSuperAdmin = userRole === "super_admin";
 
+  // --- HELPER: Bangun data trending untuk satu item (filter GI+Trafo yang sama) ---
+  const buildTrendingData = (item) => {
+    if (!item || !historyData || historyData.length === 0) return [];
+    const labelTracker = {};
+    return [...historyData]
+      .filter(
+        (h) =>
+          h.lokasi_gi === item.lokasi_gi && h.nama_trafo === item.nama_trafo,
+      )
+      .sort((a, b) => {
+        const da = new Date(a.tanggal_sampling).getTime();
+        const db = new Date(b.tanggal_sampling).getTime();
+        return da !== db ? da - db : (a.id || 0) - (b.id || 0);
+      })
+      .map((d) => {
+        let baseLabel = new Date(d.tanggal_sampling).toLocaleString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        if (labelTracker[baseLabel]) {
+          labelTracker[baseLabel] += 1;
+          baseLabel = `${baseLabel} (${labelTracker[baseLabel]})`;
+        } else {
+          labelTracker[baseLabel] = 1;
+        }
+        const tdcgCalc =
+          Number(d.h2 || 0) +
+          Number(d.ch4 || 0) +
+          Number(d.c2h6 || 0) +
+          Number(d.c2h4 || 0) +
+          Number(d.c2h2 || 0) +
+          Number(d.co || 0);
+        return {
+          ...d,
+          dateLabel: baseLabel,
+          H2:   Number(d.h2   || 0),
+          CH4:  Number(d.ch4  || 0),
+          C2H6: Number(d.c2h6 || 0),
+          C2H4: Number(d.c2h4 || 0),
+          C2H2: Number(d.c2h2 || 0),
+          CO:   Number(d.co   || 0),
+          CO2:  Number(d.co2  || 0),
+          TDCG: d.tdcg ? Number(d.tdcg) : tdcgCalc,
+        };
+      });
+  };
+
   // --- FETCH MASTER ASSETS ---
   useEffect(() => {
     const fetchAssets = async () => {
@@ -408,18 +458,16 @@ const HistoryPage = ({
 
       try {
         const pdfBlob = await Promise.race([
-          generatePDFBlob(item),
+          generatePDFBlob(item, buildTrendingData(item)),
           new Promise((_, reject) =>
             setTimeout(() => reject(new Error("timeout")), 10000),
           ),
         ]);
 
         if (pdfBlob) {
-          const filename =
-            `Laporan_DGA_${item.nama_trafo}_${item.tanggal_sampling}_${id}.pdf`.replace(
-              /[^a-z0-9_.-]/gi,
-              "_",
-            );
+          const _gi   = (item.lokasi_gi  || "GI").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+          const _trafo = (item.nama_trafo || "TD").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+          const filename = `Laporan_DGA_${_gi}_${_trafo}.pdf`;
           zip.file(filename, pdfBlob);
           successCount++;
         }
@@ -761,7 +809,11 @@ const HistoryPage = ({
                           </div>
                           <div className="relative group">
                             <button
-                              onClick={() => generatePDFFromTemplate(item)}
+                              onClick={() =>
+                                generatePDFFromTemplate(item, {
+                                  trendingData: buildTrendingData(item),
+                                })
+                              }
                               aria-label="Download PDF"
                               title="Download PDF"
                               className="p-2 text-green-500 bg-green-50 rounded hover:bg-green-100 transition-colors"
@@ -1123,7 +1175,11 @@ const HistoryPage = ({
                     <Edit2 size={16} /> Edit Identitas
                   </button>
                   <button
-                    onClick={() => generatePDFFromTemplate(selectedItem)}
+                    onClick={() =>
+                      generatePDFFromTemplate(selectedItem, {
+                        trendingData: buildTrendingData(selectedItem),
+                      })
+                    }
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-sm flex gap-2 items-center"
                   >
                     <Download size={16} /> PDF
