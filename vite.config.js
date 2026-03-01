@@ -5,25 +5,20 @@ export default defineConfig({
   plugins: [react()],
   build: {
     minify: "terser",
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            if (
-              id.includes("react") ||
-              id.includes("react-dom") ||
-              id.includes("scheduler")
-            ) {
-              return "vendor-react";
-            }
+            // PERATURAN EMAS: Jangan pernah membuat kondisi untuk "react" atau "react-dom"
+            // Biarkan Vite yang memecah React secara otomatis.
+
+            // Kita HANYA memecah library pihak ketiga yang ukurannya raksasa:
             if (id.includes("recharts")) {
               return "vendor-charts";
             }
             if (id.includes("leaflet") || id.includes("react-leaflet")) {
               return "vendor-maps";
-            }
-            if (id.includes("lucide-react")) {
-              return "vendor-icons";
             }
             if (id.includes("framer-motion")) {
               return "vendor-animation";
@@ -31,7 +26,11 @@ export default defineConfig({
             if (id.includes("supabase")) {
               return "vendor-db";
             }
-            return "vendor-utils";
+            if (id.includes("lucide-react")) {
+              return "vendor-icons";
+            }
+
+            // Sisa library lainnya akan diurus otomatis oleh Vite
           }
         },
       },
