@@ -4,8 +4,19 @@ import react from "@vitejs/plugin-react";
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      // Baris ini MEMAKSA Vite selalu menggunakan modul standar React (Solusi Error Vercel)
+      react: "react",
+      "react-dom": "react-dom",
+    },
+  },
   build: {
     minify: "terser",
+    commonjsOptions: {
+      // Membantu merakit library lama yang masih menggunakan format CommonJS
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
