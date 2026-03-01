@@ -1,28 +1,31 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Baris ini MEMAKSA Vite selalu menggunakan modul standar React (Solusi Error Vercel)
+      // Tambahkan dua baris baru di bawah ini untuk mengunci jsx-runtime
       react: "react",
       "react-dom": "react-dom",
+      "react/jsx-runtime": "react/jsx-runtime",
+      "react/jsx-dev-runtime": "react/jsx-dev-runtime",
     },
   },
   build: {
     minify: "terser",
     commonjsOptions: {
-      // Membantu merakit library lama yang masih menggunakan format CommonJS
       transformMixedEsModules: true,
     },
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            // Pisahkan library besar agar tidak memblokir loading awal
-            if (id.includes("react") || id.includes("react-dom")) {
+            if (
+              id.includes("react") ||
+              id.includes("react-dom") ||
+              id.includes("scheduler")
+            ) {
               return "vendor-react";
             }
             if (id.includes("recharts")) {
@@ -32,7 +35,7 @@ export default defineConfig({
               return "vendor-maps";
             }
             if (id.includes("lucide-react")) {
-              return "vendor-icons"; // Lucide dipisah karena ukurannya besar
+              return "vendor-icons";
             }
             if (id.includes("framer-motion")) {
               return "vendor-animation";
