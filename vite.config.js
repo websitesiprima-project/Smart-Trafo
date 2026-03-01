@@ -3,20 +3,8 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      // Tambahkan dua baris baru di bawah ini untuk mengunci jsx-runtime
-      react: "react",
-      "react-dom": "react-dom",
-      "react/jsx-runtime": "react/jsx-runtime",
-      "react/jsx-dev-runtime": "react/jsx-dev-runtime",
-    },
-  },
   build: {
     minify: "terser",
-    commonjsOptions: {
-      transformMixedEsModules: true,
-    },
     rollupOptions: {
       output: {
         manualChunks(id) {
