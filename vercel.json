@@ -1,0 +1,11 @@
+{
+  "buildCommand": "echo 'Bypass Build'",
+  "installCommand": "echo 'Bypass Install'",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
