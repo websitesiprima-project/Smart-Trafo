@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Default: Mode Gelap (Slate-900) agar rapi di layar */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0f172a;
+  font-family: "Inter", sans-serif; /* Opsional: Biar font lebih modern */
+}
+
+/* --- ATURAN KHUSUS PRINT (HEMAT TINTA) --- */
+@media print {
+  /* 1. Sembunyikan elemen yang tidak perlu (Tombol, Form Input) */
+  .no-print,
+  form,
+  button {
+    display: none !important;
+  }
+
+  /* 2. PAKSA BACKGROUND JADI PUTIH (PENTING!) */
+  body,
+  #root {
+    background-color: white !important;
+    color: black !important;
+  }
+
+  /* 3. Pastikan warna grafik (Pentagon/Chart) tetap muncul */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 4. Hilangkan shadow kartu agar cetakan lebih bersih */
+  div {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* --- ANIMASI PROGRESS BAR UNTUK LOGIN --- */
+@keyframes progress-bar {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-progress-bar {
+  animation: progress-bar 1.5s ease-in-out infinite;
+}
